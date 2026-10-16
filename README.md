@@ -10,6 +10,8 @@ sungguhan yang bicara ke **API server Hermes** yang OpenAI-compatible.
 - Enter = kirim, Shift+Enter = baris baru
 - Tool call muncul sebagai chip inline; reasoning muncul sebagai blok yang bisa dilipat
 - Tombol **Chat baru** mengosongkan percakapan; riwayat disimpan di localStorage browser
+- Tombol **Riwayat** membuka daftar sesi (semua sumber); **Lanjutkan chat** di banner
+  menjadikan sesi terpilih sebagai percakapan aktif — pesan baru masuk ke sesi yang sama
 - Tombol **Keluar** (kanan header) mengakhiri sesi; tombol di sebelahnya menampilkan user aktif
 - Tombol **⚡ Auto** adalah saklar cepat tanpa konfirmasi; **⚙ Setelan** membuka pilihan lengkap (lihat **Auto approve**)
 
@@ -194,9 +196,13 @@ percakapan dari TUI/dashboard, CLI, dan `api_server` semuanya terlihat, bukan ha
 dibuat halaman ini. Klik satu sesi untuk membaca transkripnya (`GET
 /api/sessions/{id}/messages`), lengkap dengan chip tool dan hasil tool-nya.
 
-Transkrip riwayat bersifat **read-only** dan itu disengaja: API server menolak menulis ke
-sesi yang dimiliki permukaan lain (HTTP 409 `permission_denied`), jadi halaman ini tidak
-memalsukan kemampuan melanjutkannya. Tutup banner untuk kembali ke chat berjalan.
+Tombol **Lanjutkan chat** di banner mengubah mode riwayat menjadi chat hidup: transkrip
+yang sedang dilihat menjadi konteks percakapan, `session_id` diarahkan ke sesi itu, dan
+pesan berikutnya dikirim lewat `POST /v1/runs` dengan `session_id` tersebut — jadi pesan
+baru ditambahkan **ke sesi yang sama** (bukan fork/salinan). Sesi dari permukaan lain
+(CLI/TUI/dashboard) ikut bisa dilanjutkan: runs API menerima `session_id` mana pun yang
+ada di DB dan menulis lanjutannya di sana (diuji pada sesi `cli`: 22 → 24 pesan, `source`
+tetap `cli`). Tombol **Tutup** tetap ada untuk sekadar membaca tanpa mengubah sesi.
 
 ## File
 

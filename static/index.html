@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hermes Chat</title>
+<style>
+  :root{
+    --bg:#0f1115; --bg2:#161a21; --bg3:#1d222b; --line:#262c37;
+    --fg:#e6e9ef; --dim:#8b93a1; --acc:#7aa2f7; --acc2:#bb9af7;
+    --ok:#9ece6a; --warn:#e0af68; --err:#f7768e; --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    display:flex; flex-direction:column;
+  }
+  header{
+    display:flex; align-items:center; gap:9px; padding:9px 14px;
+    background:var(--bg2); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5;
+  }
+  header h1{font-size:14px; margin:0; letter-spacing:.02em; font-weight:600; white-space:nowrap}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none;transition:background .2s}
+  .dot.on{background:var(--ok)} .dot.off{background:var(--err)}
+  .spacer{flex:1}
+  button{
+    font:inherit; font-size:13px; color:var(--fg); background:var(--bg3);
+    border:1px solid var(--line); border-radius:8px; padding:6px 11px; cursor:pointer;
+  }
+  button:hover{border-color:var(--acc); color:#fff}
+  button:disabled{opacity:.45; cursor:default}
+  button.primary{background:var(--acc); border-color:var(--acc); color:#0b1020; font-weight:600}
+  button.danger{background:transparent;border-color:var(--err);color:var(--err)}
+  button.model{
+    display:flex; align-items:center; gap:7px; max-width:46vw;
+    font:12px/1 ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--dim);
+  }
+  button.model span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  button.model b{color:var(--acc); font-weight:600}
+
+  main{flex:1; overflow-y:auto}
+  .wrap{max-width:900px; margin:0 auto; padding:20px 16px 8px; display:flex; flex-direction:column; gap:16px}
+
+  .msg{display:flex; gap:11px; align-items:flex-start}
+  .msg .who{
+    flex:none; width:26px; height:26px; border-radius:7px; display:grid; place-items:center;
+    font-size:12px; font-weight:700; background:var(--bg3); border:1px solid var(--line); color:var(--dim);
+  }
+  .msg.user .who{background:#243044; color:var(--acc); border-color:#2f3f5c}
+  .msg.agent .who{background:#2b2440; color:var(--acc2); border-color:#3d3462}
+  .msg.tool .who{background:#2a2418; color:var(--warn); border-color:#463c22}
+  .bubble{flex:1; min-width:0}
+  .msg.user .bubble .text{background:var(--bg2); border:1px solid var(--line); border-radius:var(--radius); padding:10px 13px}
+
+  .text p{margin:.5em 0} .text p:first-child{margin-top:0} .text p:last-child{margin-bottom:0}
+  .text h1,.text h2,.text h3{margin:.8em 0 .35em; line-height:1.25}
+  .text h1{font-size:1.3em} .text h2{font-size:1.15em} .text h3{font-size:1.03em}
+  .text ul,.text ol{margin:.45em 0; padding-left:1.4em}
+  .text li{margin:.18em 0}
+  .text li > ul,.text li > ol,.text ul ul,.text ol ol,.text ul ol,.text ol ul{margin:.2em 0}
+  .text a{color:var(--acc)}
+  .text code{
+    font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+    background:#11151c; border:1px solid var(--line); border-radius:5px; padding:.1em .38em;
+  }
+  .text pre{margin:.6em 0; background:#0c0f14; border:1px solid var(--line); border-radius:9px; padding:11px 13px; overflow-x:auto}
+  .text pre code{background:none; border:none; padding:0; font-size:12.5px}
+  .text hr{border:none;border-top:1px solid var(--line);margin:1em 0}
+  .text blockquote{margin:.6em 0;padding:.1em .9em;border-left:3px solid var(--line);color:var(--dim)}
+
+  /* tabel laporan */
+  .text .tblwrap{margin:.7em 0; border:1px solid var(--line); border-radius:9px; overflow-x:auto; background:#0d1117}
+  .text table{border-collapse:collapse; width:100%; font-size:13px}
+  .text th,.text td{padding:7px 11px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top}
+  .text th{background:#161c26; color:#cfd6e4; font-weight:600; white-space:nowrap}
+  .text tr:last-child td{border-bottom:none}
+  .text tr:nth-child(even) td{background:#11161e}
+  .text .al-right{text-align:right} .text .al-center{text-align:center} .text .al-left{text-align:left}
+  .text th.num,.text td.num{
+    text-align:right; font-variant-numeric:tabular-nums;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px;
+  }
+
+  /* blok kode */
+  .text .cbox{margin:.7em 0; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:#0c0f14}
+  .text .chead{
+    display:flex; align-items:center; gap:8px; padding:5px 10px; background:#131922;
+    border-bottom:1px solid var(--line); font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--dim);
+  }
+  .text .chead .lang{color:var(--acc2); letter-spacing:.04em}
+  .text .chead button.copy{
+    font:11px ui-monospace,monospace; padding:3px 9px; background:var(--bg3);
+    border:1px solid var(--line); border-radius:6px; color:var(--fg); cursor:pointer;
+  }
+  .text .chead button.copy:hover{border-color:var(--acc); color:#fff}
+  .text .cbox pre{margin:0; border:none; border-radius:0; background:none; padding:11px 13px}
+  .c-cmt{color:#6b7684; font-style:italic}
+  .c-str{color:#9ece6a} .c-num{color:#e0af68} .c-kw{color:#7aa2f7}
+
+  /* pohon folder/menu */
+  .text .tree{
+    margin:.7em 0; padding:10px 12px; background:#0c0f14; border:1px solid var(--line);
+    border-radius:9px; overflow-x:auto;
+    font:12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  .text .cbox .tree{margin:0; border:none; border-radius:0; background:none}
+  .text .tree ul{list-style:none; margin:0; padding-left:14px; border-left:1px dashed #2b3542}
+  .text .tree > ul{padding-left:2px; border-left:none}
+  .text .tree li{position:relative}
+  .text .tree .row{display:flex; align-items:baseline; gap:6px; border-radius:5px; padding:1px 3px}
+  .text .tree li.dir > .row{cursor:pointer}
+  .text .tree li.dir > .row:hover{background:#151c27}
+  .text .tree .tw{flex:none; width:11px; color:var(--dim); font-size:10px; text-align:center}
+  .text .tree li.dir > .row .tw::before{content:"▾"}
+  .text .tree li.closed > .row .tw::before{content:"▸"}
+  .text .tree .ic{flex:none; opacity:.85; font-size:11.5px}
+  .text .tree .nm{white-space:pre}
+  .text .tree li.dir > .row .nm{color:#c8d7f5}
+  .text .tree li.closed > ul{display:none}
+
+  .tools{display:flex; flex-wrap:wrap; gap:6px; margin:0 0 9px}
+  .tool{
+    font:12px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--dim);
+    background:#12161d; border:1px solid var(--line); border-radius:7px; padding:5px 8px;
+    max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .tool b{color:var(--warn); font-weight:600}
+  .tool.done{opacity:.62}
+  details.think{margin:0 0 9px; border:1px solid var(--line); border-radius:9px; background:#12161d}
+  details.think summary{cursor:pointer; padding:7px 11px; font-size:12px; color:var(--dim); user-select:none}
+  details.think pre{margin:0; padding:0 13px 11px; white-space:pre-wrap; font-size:12.5px; color:#a9b1c1}
+
+  .cursor::after{content:"▍"; color:var(--acc); animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  /* kartu konfirmasi (approval) */
+  .approval{
+    margin:0 0 10px; border:1px solid #6b5320; background:#241f12; border-radius:10px; padding:11px 13px;
+  }
+  .approval.answered{border-color:var(--line); background:#141821; opacity:.85}
+  .approval .aphead{font-size:12px; font-weight:700; letter-spacing:.03em; color:var(--warn); text-transform:uppercase}
+  .approval.answered .aphead{color:var(--dim)}
+  .approval .apcmd{
+    margin:8px 0 6px; padding:8px 10px; background:#0c0f14; border:1px solid var(--line); border-radius:7px;
+    font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre-wrap; overflow-wrap:anywhere;
+  }
+  .approval .apdesc{font-size:12.5px; color:var(--dim); margin-bottom:9px}
+  .approval .apbtns{display:flex; gap:7px; flex-wrap:wrap}
+  .approval .apbtns button{font-size:12.5px; padding:6px 11px}
+  .approval .apstate{margin-top:9px; font-size:12px; color:var(--dim); font:12px ui-monospace,monospace}
+  .approval .apstate.ok{color:var(--ok)} .approval .apstate.bad{color:var(--err)}
+  .err{border:1px solid var(--err); background:#241419; color:#ffc9d2; border-radius:9px; padding:11px 13px; font-size:13.5px; white-space:pre-wrap; overflow-wrap:anywhere}
+  .err b{color:#fff}
+  .empty{color:var(--dim); text-align:center; padding:13vh 0 0; font-size:14px}
+  .empty code{font:12.5px ui-monospace,monospace; background:var(--bg3); padding:2px 6px; border-radius:5px}
+
+  footer{border-top:1px solid var(--line); background:var(--bg2); padding:11px 16px 13px}
+  .composer{max-width:900px; margin:0 auto; display:flex; gap:9px; align-items:flex-end}
+  textarea{
+    flex:1; resize:none; min-height:46px; max-height:210px; padding:12px 13px;
+    background:var(--bg3); color:var(--fg); border:1px solid var(--line); border-radius:var(--radius);
+    font:inherit; line-height:1.45; outline:none;
+  }
+  textarea:focus{border-color:var(--acc)}
+  textarea:disabled{opacity:.5}
+  .hint{max-width:900px;margin:7px auto 0;color:var(--dim);font-size:11.5px;display:flex;gap:12px;flex-wrap:wrap}
+  .hint .mono{font:11px ui-monospace,monospace}
+
+  /* ---- panel samping ---- */
+  .scrim{position:fixed; inset:0; background:#000a; z-index:20; display:none}
+  .scrim.open{display:block}
+  .panel{
+    position:fixed; top:0; bottom:0; left:0; width:min(440px,90vw); z-index:21;
+    background:var(--bg2); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; transform:translateX(-102%); transition:transform .18s ease;
+  }
+  .panel.open{transform:none}
+  .panel > header{position:static; border-bottom:1px solid var(--line)}
+  .panel .body{flex:1; overflow-y:auto; padding:8px}
+  .panel input[type=search]{
+    width:100%; padding:10px 12px; background:var(--bg3); color:var(--fg);
+    border:1px solid var(--line); border-radius:9px; font:inherit; font-size:13.5px; outline:none;
+  }
+  .panel input[type=search]:focus{border-color:var(--acc)}
+
+  .sess{padding:9px 11px; border:1px solid transparent; border-radius:9px; cursor:pointer; margin-bottom:2px}
+  .sess:hover{background:var(--bg3); border-color:var(--line)}
+  .sess .t{font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .sess .m{font-size:11.5px; color:var(--dim); margin-top:3px; display:flex; gap:9px; flex-wrap:wrap}
+  .sess .m .src{color:var(--acc)}
+
+  .mrow{padding:7px 11px; border-radius:8px; cursor:pointer; display:flex; gap:8px; align-items:baseline}
+  .mrow:hover{background:var(--bg3)}
+  .mrow .prov{font:11.5px ui-monospace,monospace; color:var(--acc2); flex:none; width:104px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .mrow .id{font:12.5px ui-monospace,monospace; color:var(--fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .mrow.sel{background:#1b2740}
+  .mrow.na .id{color:var(--dim)}
+  .phead{font:11.5px ui-monospace,monospace; color:var(--dim); padding:10px 11px 4px; text-transform:uppercase; letter-spacing:.06em}
+
+  /* setelan */
+  .setrow{
+    display:flex; gap:10px; align-items:flex-start; padding:10px 11px; margin:6px 0;
+    border:1px solid var(--line); border-radius:9px; background:var(--bg2); cursor:pointer;
+  }
+  .setrow:hover{border-color:var(--acc)}
+  .setrow.on{border-color:var(--acc); background:#16203a}
+  .setrow .mark{
+    flex:none; width:15px; height:15px; border-radius:50%; border:1.5px solid var(--dim); margin-top:2px;
+  }
+  .setrow.on .mark{border-color:var(--acc); background:var(--acc); box-shadow:inset 0 0 0 3px var(--bg2)}
+  .setrow .lbl{font-size:13.5px}
+  .setrow .hint2{font-size:11.5px; color:var(--dim); margin-top:3px; line-height:1.45}
+  .setnote{font-size:11.5px; color:var(--dim); padding:10px 11px 16px; line-height:1.55}
+  .setnote code{font:11px ui-monospace,monospace; color:var(--acc2)}
+
+  .banner{
+    max-width:900px; margin:14px auto 0; padding:9px 13px; border-radius:9px; font-size:13px;
+    background:#1a2233; border:1px solid #2c3a55; color:#c8d3e6; display:flex; gap:10px; align-items:center;
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>Hermes</h1>
+  <button class="model" id="modelBtn" title="Pilih provider &amp; model">
+    <b id="modelProv">default</b><span id="modelName">memuat…</span>
+  </button>
+  <span class="spacer"></span>
+  <button id="auto" title="Jawab permintaan konfirmasi otomatis">⚡ Auto</button>
+  <button id="settings" title="Setelan: konfirmasi perintah">⚙</button>
+  <button id="history">Riwayat</button>
+  <button id="clear">Chat baru</button>
+  <button id="who" title="Sesi login aktif">…</button>
+  <button id="logout">Keluar</button>
+</header>
+
+<div class="banner" id="banner" style="display:none">
+  <span id="bannerText"></span><span class="spacer"></span>
+  <button id="bannerClose">Tutup</button>
+</div>
+
+<main id="main">
+  <div class="wrap" id="wrap">
+    <div class="empty" id="empty">
+      Chat langsung ke Hermes Agent.<br>
+      Tool call, memory, dan skills berjalan di server.<br><br>
+      <code>Enter</code> kirim &middot; <code>Shift+Enter</code> baris baru
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="composer">
+    <textarea id="input" rows="1" placeholder="Tulis pesan…"></textarea>
+    <button class="primary" id="send">Kirim</button>
+    <button class="danger" id="stop" hidden>Stop</button>
+  </div>
+  <div class="hint">
+    <span id="status">siap</span>
+    <span class="mono" id="sid"></span>
+  </div>
+</footer>
+
+<div class="scrim" id="scrim"></div>
+
+<aside class="panel" id="histPanel">
+  <header><h1>Riwayat sesi</h1><span class="spacer"></span>
+    <button id="histRefresh">Muat ulang</button><button id="histClose">✕</button></header>
+  <div class="body" id="histBody"></div>
+</aside>
+
+<aside class="panel" id="settingsPanel">
+  <header><h1>Setelan</h1><span class="spacer"></span><button id="settingsClose">✕</button></header>
+  <div class="body" id="settingsBody"></div>
+</aside>
+
+<aside class="panel" id="modelPanel">
+  <header><h1>Provider &amp; model</h1><span class="spacer"></span><button id="modelClose">✕</button></header>
+  <div style="padding:8px 8px 0"><input type="search" id="modelSearch" placeholder="Cari model…" autocomplete="off"></div>
+  <div class="body" id="modelBody"></div>
+</aside>
+
+<script>
+(() => {
+  // Sesi login bisa kedaluwarsa atau dicabut di server. Setiap 401 dari proxy berarti
+  // cookie sudah tidak sah — lempar ke halaman login, jangan tampilkan error mentah.
+  const _fetch = window.fetch.bind(window);
+  window.fetch = (input, init) => _fetch(input, init).then((res) => {
+    if (res.status === 401) {
+      const next = encodeURIComponent(location.pathname + location.search);
+      location.replace(`/login?next=${next}`);
+    }
+    return res;
+  });
+
+  const $ = (id) => document.getElementById(id);
+  const wrap = $("wrap"), main = $("main"), input = $("input");
+  const sendBtn = $("send"), stopBtn = $("stop"), dot = $("dot");
+  const statusEl = $("status"), sidEl = $("sid");
+  const LS = "hermes-webchat-v2";
+
+  let live = [];              // percakapan yang sedang berjalan
+  let sessionId = newSessionId();
+  let history = null;         // {id,title,source,messages:[]} saat menonton riwayat
+  let controller = null;
+  let MODEL = "", PROVIDER = "";
+  let options = null;         // /api/model/options
+  let RUN_ID = null;          // run yang sedang berjalan (untuk stop & jawab approval)
+  let APPROVAL = "auto";      // "auto" = jalan tanpa konfirmasi, "ask" = tampilkan kartu
+  let AUTO_SCOPE = "session"; // scope jawaban otomatis: session | once | always
+
+  const CHOICE_LABEL = {
+    once: "Terima sekali",
+    session: "Terima untuk sesi ini",
+    always: "Selalu terima",
+    deny: "Tolak",
+  };
+
+  // ---------------- persist ----------------
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS) || "{}");
+    if (Array.isArray(raw.live)) live = raw.live;
+    if (typeof raw.sessionId === "string" && raw.sessionId) sessionId = raw.sessionId;
+    if (typeof raw.model === "string") MODEL = raw.model;
+    if (typeof raw.provider === "string") PROVIDER = raw.provider;
+    if (raw.approval === "ask" || raw.approval === "auto") APPROVAL = raw.approval;
+    else if (typeof raw.auto === "boolean") APPROVAL = raw.auto ? "auto" : "ask";  // setelan versi lama
+    if (["session", "once", "always"].includes(raw.autoScope)) AUTO_SCOPE = raw.autoScope;
+  } catch {}
+  const save = () => {
+    try { localStorage.setItem(LS, JSON.stringify({ live, sessionId, model: MODEL, provider: PROVIDER, approval: APPROVAL, autoScope: AUTO_SCOPE })); } catch {}
+  };
+  function newSessionId() {
+    return "webchat-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  }
+
+  // ---------------- markdown ----------------
+  // Mendukung: heading, paragraf, list bertingkat, blockquote, hr, tabel GFM,
+  // blok kode dengan label bahasa + tombol salin + pewarnaan ringan, dan tampilan
+  // pohon (folder/menu: output `tree`, `ls -R`, atau struktur berindentasi).
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  function inline(s) {
+    return s
+      .replace(/`([^`\n]+)`/g, (_, c) => `<code>${c}</code>`)
+      .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/~~([^~\n]+)~~/g, "<del>$1</del>")
+      .replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+  }
+
+  // ---- tabel ----
+  const rowCells = (line) => {
+    let s = line.trim();
+    if (s.startsWith("|")) s = s.slice(1);
+    if (s.endsWith("|")) s = s.slice(0, -1);
+    return s.split("|").map((c) => c.trim());
+  };
+  const isSepRow = (line) => {
+    const cells = rowCells(line);
+    return cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c));
+  };
+  const alignOf = (cell) => {
+    const l = cell.startsWith(":"), r = cell.endsWith(":");
+    return l && r ? "center" : r ? "right" : l ? "left" : "";
+  };
+  // sel sudah ter-escape (bagian non-kode di-escape lebih dulu)
+  function tableHTML(rows, aligns) {
+    const width = rows.reduce((n, r) => Math.max(n, r.length), 0);
+    let out = '<div class="tblwrap"><table>';
+    rows.forEach((cells, ri) => {
+      const tag = ri === 0 ? "th" : "td";
+      out += "<tr>";
+      for (let c = 0; c < width; c++) {
+        const a = aligns[c];
+        const num = tag === "td" && /^-?[\d.,%]+$/.test((cells[c] || "").replace(/[^\d.,%-]/g, ""));
+        const cls = [a ? "al-" + a : "", num ? "num" : ""].filter(Boolean).join(" ");
+        out += `<${tag}${cls ? ` class="${cls}"` : ""}>${inline(cells[c] || "")}</${tag}>`;
+      }
+      out += "</tr>";
+    });
+    return out + "</table></div>";
+  }
+
+  // ---- pohon (tree) ----
+  // Cocok untuk output `tree`, `ls -R`, atau menu bertingkat: setiap 4 karakter
+  // panduan (│ atau spasi) = satu level. Butuh minimal 2 baris bergaris cabang
+  // supaya teks berindentasi biasa tidak salah dibaca sebagai pohon.
+  function treeShape(text) {
+    const raw = String(text).replace(/\t/g, "    ").split("\n");
+    const lines = raw.filter((l, i) => !(l.trim() === "" && i === raw.length - 1));
+    if (lines.length < 2) return null;
+    const items = [];
+    let guides = 0;
+    for (const line of lines) {
+      if (!line.trim()) return null;
+      // satu level = satu blok 4 karakter panduan; baris bercabang (├──/└──/+--) naik
+      // satu level lagi, sebab garis itu sendiri menandakan "anak dari baris di atasnya".
+      const m = /^((?:(?:[│|]| )[ ]{3})*)([├└`+][─-]{1,3}[ ]+)?(\S.*)$/.exec(line);
+      if (!m) return null;
+      if (m[2]) guides++;
+      const blocks = Math.floor(m[1].length / 4);   // tiap blok tepat 4 karakter, jangan di-trim
+      items.push({
+        level: Math.min(blocks + (m[2] ? 1 : 0), 12),
+        name: m[3],
+        dir: /\/$/.test(m[3]),
+      });
+    }
+    return guides >= 2 ? items : null;
+  }
+  // name sudah dalam bentuk siap-tampil (ter-escape pemanggil)
+  function treeHTML(items) {
+    let out = '<div class="tree"><ul>';
+    const levels = [0];
+    items.forEach((it, i) => {
+      const hasKids = i + 1 < items.length && items[i + 1].level > it.level;
+      const dir = it.dir || hasKids;
+      while (levels.length > 1 && it.level < levels[levels.length - 1]) {
+        out += "</li></ul>";
+        levels.pop();
+      }
+      if (it.level > levels[levels.length - 1]) {
+        out += "<ul>";
+        levels.push(it.level);
+      } else if (!out.endsWith("<ul>")) {
+        out += "</li>";
+      }
+      out += `<li class="${dir ? "dir" : "file"}"><span class="row"><span class="tw"></span>` +
+        `<span class="ic">${dir ? "📁" : "📄"}</span><span class="nm">${it.name}</span></span>`;
+    });
+    while (levels.length > 1) { out += "</li></ul>"; levels.pop(); }
+    return out + "</li></ul></div>";
+  }
+
+  // ---- blok kode ----
+  // Pewarnaan ringan (string, komentar, angka, kata kunci/perintah umum). Bukan
+  // parser per bahasa — cukup supaya kode enak dibaca, dan aman karena setiap
+  // token di-escape terpisah.
+  // Komentar `//` hanya di awal baris atau setelah spasi/;/() — supaya URL seperti
+  // `postgres://host` tidak salah diwarnai sebagai komentar.
+  const HL = /((?:^|[\s;(])\/\/[^\n]*|(?:^|\s)#(?![0-9a-fA-F]{3,8}\b)[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)|((?<![\w.])\d+(?:\.\d+)?(?![\w.]))|(\b(?:function|const|let|var|if|else|elif|for|while|do|return|class|extends|new|import|export|from|require|def|lambda|try|except|catch|finally|raise|await|async|yield|with|as|in|of|not|and|or|True|False|None|null|true|false|undefined|this|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|JOIN|LEFT|GROUP|ORDER|BY|LIMIT|CREATE|TABLE|ALTER|DROP|VALUES|SET|npm|npx|node|python3?|git|cd|ls|cat|grep|find|sudo|rm|cp|mv|mkdir|chmod|chown|curl|wget|tar|zip|ssh|scp|docker|compose|systemctl|journalctl|pm2|psql|export|source|echo|awk|sed)\b)/g;
+  function highlight(code) {
+    let out = "", last = 0, m;
+    HL.lastIndex = 0;
+    while ((m = HL.exec(code))) {
+      out += esc(code.slice(last, m.index));
+      const cls = m[1] ? "c-cmt" : m[2] ? "c-str" : m[3] ? "c-num" : "c-kw";
+      out += `<span class="${cls}">${esc(m[0])}</span>`;
+      last = m.index + m[0].length;
+    }
+    return out + esc(code.slice(last));
+  }
+  function codeHTML(info, body) {
+    const lang = (info.split(/\s+/)[0] || "").replace(/[^\w+#.-]/g, "").toLowerCase();
+    const head = `<div class="chead"><span class="lang">${esc(lang || "teks")}</span>` +
+      `<span class="spacer"></span><button class="copy" type="button" title="Salin isi blok">Salin</button></div>`;
+    let shape = null;
+    if (!lang || ["tree", "txt", "text", "plain", "output"].includes(lang)) shape = treeShape(body);
+    if (shape) return `<div class="cbox">${head}${treeHTML(shape)}</div>`;
+    return `<div class="cbox">${head}<pre><code>${highlight(body)}</code></pre></div>`;
+  }
+  function codeBlockHTML(info, body) {
+    return codeHTML(info, body);
+  }
+
+  function md(src) {
+    const parts = String(src).split(/```/);
+    let out = "";
+    parts.forEach((part, i) => {
+      if (i % 2 === 1) {                                  // blok kode
+        const nl = part.indexOf("\n");
+        const info = (nl >= 0 ? part.slice(0, nl) : "").trim();
+        const body = (nl >= 0 ? part.slice(nl + 1) : part).replace(/\n$/, "");
+        out += codeHTML(info, body);
+        return;
+      }
+      const lines = esc(part).split("\n");
+      let buf = [];
+      const stack = [];                                   // list bertingkat
+      const flushP = () => { if (buf.length) { out += `<p>${inline(buf.join("<br>"))}</p>`; buf = []; } };
+      const closeLists = () => { while (stack.length) out += "</li></" + stack.pop().tag + ">"; };
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].replace(/\s+$/, "");
+
+        // tabel GFM: baris berisi "|" diikuti baris pemisah
+        if (line.trim().startsWith("|") && i + 1 < lines.length && isSepRow(lines[i + 1])) {
+          const rows = [rowCells(line)];
+          const aligns = rowCells(lines[i + 1]).map(alignOf);
+          i += 2;
+          while (i < lines.length && lines[i].trim().startsWith("|")) {
+            rows.push(rowCells(lines[i]));
+            i++;
+          }
+          i--;
+          flushP(); closeLists();
+          out += tableHTML(rows, aligns);
+          continue;
+        }
+
+        // pohon: kumpulkan satu blok baris berisi panduan cabang
+        if (/[├└`+]|^[│|]/.test(line)) {
+          const run = [];
+          let j = i;
+          while (j < lines.length && lines[j].trim()) { run.push(lines[j]); j++; }
+          const shape = treeShape(run.join("\n"));
+          if (shape) {
+            flushP(); closeLists();
+            out += treeHTML(shape);
+            i = j - 1;
+            continue;
+          }
+        }
+
+        const h = /^(#{1,4})\s+(.*)$/.exec(line);
+        if (h) { flushP(); closeLists(); out += `<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`; continue; }
+
+        const li = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(line);
+        if (li) {
+          flushP();
+          const level = Math.min(Math.floor(li[1].replace(/\t/g, "    ").length / 2), 8);
+          const tag = /^\d/.test(li[2]) ? "ol" : "ul";
+          if (!stack.length) { out += `<${tag}>`; stack.push({ level, tag }); }
+          else {
+            while (stack.length > 1 && level < stack[stack.length - 1].level) {
+              out += "</li></" + stack.pop().tag + ">";
+            }
+            const top = stack[stack.length - 1];
+            if (level > top.level) { out += `<${tag}>`; stack.push({ level, tag }); }
+            else {
+              out += "</li>";
+              if (top.tag !== tag) { out += `</${top.tag}><${tag}>`; top.tag = tag; }
+            }
+          }
+          out += `<li>${inline(li[3])}`;
+          continue;
+        }
+
+        if (/^\s*([-*_])\s*\1\s*\1\s*$/.test(line)) { flushP(); closeLists(); out += "<hr>"; continue; }
+        if (/^&gt;\s?/.test(line)) { flushP(); closeLists(); out += `<blockquote>${inline(line.replace(/^&gt;\s?/, ""))}</blockquote>`; continue; }
+        if (!line.trim()) { flushP(); closeLists(); continue; }
+        buf.push(line);
+      }
+      flushP(); closeLists();
+    });
+    return out;
+  }
+
+  // ---------------- render ----------------
+  function node(m, streaming) {
+    const isTool = m.role === "tool";
+    const el = document.createElement("div");
+    el.className = "msg " + (m.role === "user" ? "user" : isTool ? "tool" : "agent");
+
+    const who = document.createElement("div");
+    who.className = "who";
+    who.textContent = m.role === "user" ? "You" : isTool ? "→" : "H";
+    el.appendChild(who);
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+
+    if (m.thinking) {
+      const d = document.createElement("details");
+      d.className = "think";
+      d.open = !!streaming;
+      const s = document.createElement("summary");
+      s.textContent = "reasoning";
+      const pre = document.createElement("pre");
+      pre.textContent = m.thinking;
+      d.append(s, pre);
+      bubble.appendChild(d);
+    }
+
+    if (m.tools && m.tools.length) {
+      const box = document.createElement("div");
+      box.className = "tools";
+      for (const t of m.tools) {
+        const chip = document.createElement("div");
+        chip.className = "tool" + (t.done ? " done" : "");
+        const bits = [];
+        if (t.done && typeof t.duration === "number") bits.push(t.duration.toFixed(1) + "s");
+        if (t.error) bits.push("gagal");
+        chip.innerHTML = `<b>${esc(t.name || "tool")}</b> ${esc(t.detail || "")}` +
+          (bits.length ? ` <span style="opacity:.7">· ${esc(bits.join(" · "))}</span>` : "");
+        box.appendChild(chip);
+      }
+      bubble.appendChild(box);
+    }
+
+    if (m.approvals && m.approvals.length) {
+      for (const a of m.approvals) bubble.appendChild(approvalCard(a));
+    }
+
+    if (m.error) {
+      const e = document.createElement("div");
+      e.className = "err";
+      e.innerHTML = `<b>${esc(m.error)}</b>` + (m.detail ? "\n" + esc(m.detail) : "");
+      bubble.appendChild(e);
+    } else if (isTool) {
+      const box = document.createElement("div");
+      box.className = "tools";
+      const chip = document.createElement("div");
+      chip.className = "tool done";
+      chip.innerHTML = `<b>${esc(m.tool || "tool")}</b> ${esc(String(m.text || "").slice(0, 400))}`;
+      box.appendChild(chip);
+      bubble.appendChild(box);
+    } else if (m.text) {
+      const t = document.createElement("div");
+      t.className = "text" + (streaming ? " cursor" : "");
+      t.innerHTML = md(m.text);
+      bubble.appendChild(t);
+    } else if (streaming && !(m.tools && m.tools.length)) {
+      const t = document.createElement("div");
+      t.className = "text cursor";
+      bubble.appendChild(t);
+    }
+
+    el.appendChild(bubble);
+    return el;
+  }
+
+  const current = () => (history ? history.messages : live);
+
+  // ---------------- kartu konfirmasi ----------------
+  function approvalCard(a) {
+    const el = document.createElement("div");
+    el.className = "approval" + (a.answered ? " answered" : "");
+
+    const head = document.createElement("div");
+    head.className = "aphead";
+    head.textContent = a.answered
+      ? (a.auto ? "⚡ Konfirmasi dijawab otomatis" : "Konfirmasi dijawab")
+      : "⚠ Perlu konfirmasi";
+    el.appendChild(head);
+
+    const cmd = document.createElement("div");
+    cmd.className = "apcmd";
+    cmd.textContent = a.command || "(perintah tidak dilampirkan)";
+    el.appendChild(cmd);
+
+    if (a.description) {
+      const d = document.createElement("div");
+      d.className = "apdesc";
+      d.textContent = "Terdeteksi: " + a.description;
+      el.appendChild(d);
+    }
+
+    if (!a.answered) {
+      const btns = document.createElement("div");
+      btns.className = "apbtns";
+      const choices = (a.choices && a.choices.length) ? a.choices : ["once", "deny"];
+      for (const c of choices) {
+        const b = document.createElement("button");
+        b.textContent = CHOICE_LABEL[c] || c;
+        if (c === "deny") b.className = "danger";
+        else if (c === "once") b.className = "primary";
+        b.onclick = () => answerApproval(a, c);
+        btns.appendChild(b);
+      }
+      el.appendChild(btns);
+    }
+
+    const st = document.createElement("div");
+    st.className = "apstate" + (a.state ? (a.ok === false ? " bad" : " ok") : "");
+    st.textContent = a.state || (a.answered ? "" : "menunggu jawabanmu…");
+    el.appendChild(st);
+    return el;
+  }
+
+  async function answerApproval(a, choice, auto) {
+    a.state = auto ? "menjawab otomatis…" : "mengirim…";
+    render();
+    const payload = { choice };
+    if (a.request_id) payload.request_id = a.request_id;
+    if (a.execution_generation != null) payload.execution_generation = a.execution_generation;
+    try {
+      const r = await fetch(`/v1/runs/${encodeURIComponent(a.run_id)}/approval`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        a.ok = false;
+        a.state = "Gagal menjawab: " + (j.detail || j.error?.message || j.error || ("HTTP " + r.status));
+      } else {
+        a.ok = true;
+        a.answered = true;
+        a.auto = !!auto;
+        a.state = (auto ? "Otomatis: " : "Dijawab: ") + (CHOICE_LABEL[choice] || choice);
+      }
+    } catch (e) {
+      a.ok = false;
+      a.state = "Gagal menjawab: " + String(e);
+    }
+    render();
+  }
+
+  // Pilihan untuk mode auto: ikuti scope yang dipilih user; "always" hanya dipakai
+  // kalau user memang memilihnya di Setelan (scope itu menulis allowlist permanen ke disk).
+  function pickAutoChoice(choices) {
+    const offered = (Array.isArray(choices) && choices.length ? choices : []).filter((c) => c !== "deny");
+    if (!offered.length) return "deny";   // server tidak menawarkan pilihan menerima
+    const order = AUTO_SCOPE === "always" ? ["always", "session", "once"] : [AUTO_SCOPE, "session", "once"];
+    for (const want of [...new Set(order)]) if (offered.includes(want)) return want;
+    return offered[0];
+  }
+
+  function render() {
+    const list = current();
+    $("empty").style.display = list.length ? "none" : "";
+    [...wrap.querySelectorAll(".msg")].forEach((n) => n.remove());
+    const frag = document.createDocumentFragment();
+    list.forEach((m, i) => frag.appendChild(node(m, !!m.__streaming && i === list.length - 1)));
+    wrap.appendChild(frag);
+    save();
+  }
+  function repaintLast() {
+    const list = current();
+    const last = list[list.length - 1];
+    if (!last) return;
+    const old = wrap.querySelector(".msg:last-child");
+    const fresh = node(last, true);
+    if (old) old.replaceWith(fresh); else wrap.appendChild(fresh);
+    main.scrollTop = main.scrollHeight;
+  }
+
+  // ---------------- event stream (Runs API) ----------------
+  // POST /v1/runs membuat run; GET /v1/runs/{id}/events mengalirkan eventnya. Dipilih
+  // daripada /v1/chat/completions karena di sinilah argumen tool, durasi, status gagal,
+  // dan permintaan konfirmasi (approval.request) benar-benar dikirim.
+  function handleEvent(evt, data, cur) {
+    if (evt === "hermes.tool.progress") {                 // kompat: jalur chat completions
+      if (data.status === "completed" || data.status === "failed") {
+        const last = cur.tools[cur.tools.length - 1];
+        if (last) last.done = true;
+        repaintLast();
+        return;
+      }
+      const name = data.tool || data.name || "tool";
+      const detail = data.preview || data.label || data.command || "";
+      if (!cur.tools.some((t) => t.name === name && t.detail === detail)) {
+        cur.tools.push({ name, detail, done: false });
+      }
+      repaintLast();
+      return;
+    }
+    const choice = (data.choices || [])[0];
+    if (choice) {                                         // kompat: chat completions chunk
+      const d = choice.delta || {};
+      if (d.reasoning_content) { cur.thinking = (cur.thinking || "") + d.reasoning_content; repaintLast(); }
+      if (d.content) { cur.text += d.content; repaintLast(); }
+    }
+  }
+
+  function handleRunEvent(j, evt, cur) {
+    const kind = j.event || evt || "";
+    switch (kind) {
+      case "message.delta":
+        if (j.delta) { cur.text += j.delta; repaintLast(); }
+        return;
+      case "__reasoning__":
+      case "reasoning.delta":
+        if (j.delta || j.text) { cur.thinking = (cur.thinking || "") + (j.delta || j.text); repaintLast(); }
+        return;
+      case "tool.started":
+        cur.tools.push({ name: j.tool, detail: j.preview || "", id: j.tool_call_id, done: false });
+        repaintLast();
+        return;
+      case "tool.completed": {
+        let t = j.tool_call_id ? cur.tools.find((x) => x.id === j.tool_call_id) : null;
+        if (!t) { t = { name: j.tool, detail: "", id: j.tool_call_id, done: false }; cur.tools.push(t); }
+        t.done = true;
+        if (typeof j.duration === "number") t.duration = j.duration;
+        if (j.error) t.error = true;
+        repaintLast();
+        return;
+      }
+      case "approval.request": {
+        const a = {
+          run_id: j.run_id || RUN_ID,
+          request_id: j.request_id || j.prompt_id,
+          execution_generation: j.execution_generation,
+          command: j.command,
+          description: j.description,
+          choices: Array.isArray(j.choices) ? j.choices : [],
+        };
+        cur.approvals.push(a);
+        if (APPROVAL === "auto") {
+          // Tidak ada kartu yang perlu diklik: jawab langsung di jalur event yang sama,
+          // supaya run tidak berhenti menunggu (timeout approval default 5 menit).
+          statusEl.textContent = "konfirmasi otomatis…";
+          repaintLast();
+          answerApproval(a, pickAutoChoice(a.choices), true);
+        } else {
+          statusEl.textContent = "menunggu konfirmasimu";
+          repaintLast();
+        }
+        return;
+      }
+      case "approval.responded": {
+        const pending = cur.approvals.filter((a) => !a.answered).pop();
+        if (pending) {
+          pending.answered = true;
+          pending.ok = j.choice !== "deny";
+          pending.state = "Dijawab: " + (CHOICE_LABEL[j.choice] || j.choice || "");
+        }
+        repaintLast();
+        return;
+      }
+      case "subagent.start":
+        cur.tools.push({ name: "subagent", detail: j.goal || j.summary || "", done: false });
+        repaintLast();
+        return;
+      case "subagent.complete": {
+        const s = cur.tools.filter((t) => t.name === "subagent" && !t.done).pop();
+        if (s) { s.done = true; s.detail = (s.detail + " — " + (j.status || "selesai")).slice(0, 160); }
+        repaintLast();
+        return;
+      }
+      case "run.completed":
+        if (j.output) cur.text = j.output;
+        if (j.usage) cur.usage = j.usage;
+        cur.approvals.forEach((a) => { if (!a.answered) a.state = a.state || ""; });
+        statusEl.textContent = "selesai";
+        return;
+      case "run.failed":
+        cur.error = "Run gagal";
+        cur.detail = typeof j.error === "string" ? j.error : JSON.stringify(j.error || j.message || "");
+        statusEl.textContent = "gagal";
+        dot.className = "dot off";
+        return;
+      case "run.cancelled":
+        statusEl.textContent = "dibatalkan";
+        if (!cur.text) cur.error = "Dibatalkan";
+        return;
+      case "run.interrupted":
+        statusEl.textContent = "terputus";
+        if (!cur.text) cur.error = "Terputus";
+        return;
+      default:
+        return;
+    }
+  }
+
+  // ---------------- kirim ----------------
+  async function send() {
+    const text = input.value.trim();
+    if (!text || controller || history) return;
+
+    input.value = "";
+    autoGrow();
+    live.push({ role: "user", text });
+    const cur = { role: "assistant", text: "", thinking: "", tools: [], approvals: [], __streaming: true };
+    live.push(cur);
+    render();
+    main.scrollTop = main.scrollHeight;
+
+    controller = new AbortController();
+    sendBtn.hidden = true; stopBtn.hidden = false;
+    statusEl.textContent = "mengirim…";
+    dot.className = "dot on";
+
+    const body = { input: text, session_id: sessionId };
+    if (MODEL) body.model = MODEL;
+    if (PROVIDER) body.provider = PROVIDER;      // provider eksplisit selalu dihormati
+
+    try {
+      // 1. buat run
+      const res = await fetch("/v1/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      const created = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        cur.error = "Gagal memulai run";
+        cur.detail = created.detail || created.error?.message || created.error || ("HTTP " + res.status);
+        statusEl.textContent = "gagal";
+        dot.className = "dot off";
+        return;
+      }
+      RUN_ID = created.run_id;
+      statusEl.textContent = "berjalan…";
+
+      // 2. ikuti eventnya sampai run selesai
+      const ev = await fetch(`/v1/runs/${encodeURIComponent(RUN_ID)}/events`, { signal: controller.signal });
+      if (!ev.ok || !ev.body) {
+        cur.error = "Tidak bisa membuka stream event";
+        cur.detail = (await ev.text().catch(() => "")).slice(0, 400) || ("HTTP " + ev.status);
+        statusEl.textContent = "gagal";
+        return;
+      }
+      const reader = ev.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const block = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          let evt = null, data = "";
+          for (const line of block.split("\n")) {
+            if (line.startsWith(":")) continue;               // baris keepalive
+            if (line.startsWith("event:")) evt = line.slice(6).trim();
+            else if (line.startsWith("data:")) data += line.slice(5).trim();
+          }
+          if (!data) continue;
+          try { handleRunEvent(JSON.parse(data), evt, cur); } catch {}
+        }
+      }
+      if (cur.tools.length) cur.tools[cur.tools.length - 1].done = true;
+      if (statusEl.textContent === "berjalan…") statusEl.textContent = "selesai";
+    } catch (e) {
+      if (e.name === "AbortError") {
+        statusEl.textContent = "dihentikan";
+      } else {
+        cur.error = "Gagal menghubungi server chat";
+        cur.detail = String(e);
+        statusEl.textContent = "gagal";
+        dot.className = "dot off";
+      }
+    } finally {
+      cur.__streaming = false;
+      controller = null;
+      RUN_ID = null;
+      sendBtn.hidden = false; stopBtn.hidden = true;
+      render();
+      main.scrollTop = main.scrollHeight;
+      input.focus();
+    }
+  }
+
+  async function stopRun() {
+    if (!RUN_ID) { if (controller) controller.abort(); return; }
+    statusEl.textContent = "menghentikan…";
+    try {
+      await fetch(`/v1/runs/${encodeURIComponent(RUN_ID)}/stop`, { method: "POST" });
+    } catch (e) {
+      statusEl.textContent = "gagal menghentikan";
+    }
+  }
+
+  // ---------------- panel ----------------
+  const openPanel = (id) => { $("scrim").classList.add("open"); $(id).classList.add("open"); };
+  function closePanels() {
+    $("scrim").classList.remove("open");
+    $("histPanel").classList.remove("open");
+    $("modelPanel").classList.remove("open");
+    $("settingsPanel").classList.remove("open");
+  }
+  $("scrim").onclick = closePanels;
+  $("histClose").onclick = closePanels;
+  $("modelClose").onclick = closePanels;
+  $("settingsClose").onclick = closePanels;
+
+  const rel = (ts) => {
+    if (!ts) return "";
+    const s = Math.max(0, Date.now() / 1000 - Number(ts));
+    if (s < 60) return "baru saja";
+    if (s < 3600) return Math.floor(s / 60) + " mnt lalu";
+    if (s < 86400) return Math.floor(s / 3600) + " jam lalu";
+    return Math.floor(s / 86400) + " hari lalu";
+  };
+
+  async function loadHistory() {
+    const body = $("histBody");
+    body.innerHTML = '<div class="phead">memuat…</div>';
+    try {
+      const r = await fetch("/api/sessions?limit=60", { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "gagal");
+      const items = j.data || [];
+      body.innerHTML = "";
+      if (!items.length) { body.innerHTML = '<div class="phead">belum ada sesi</div>'; return; }
+      for (const s of items) {
+        const el = document.createElement("div");
+        el.className = "sess";
+        el.innerHTML =
+          `<div class="t">${esc(s.title || "(tanpa judul)")}</div>` +
+          `<div class="m"><span class="src">${esc(s.source || "?")}</span>` +
+          `<span>${s.message_count || 0} pesan</span>` +
+          `<span>${esc(rel(s.last_active))}</span></div>`;
+        el.onclick = () => openSession(s);
+        body.appendChild(el);
+      }
+    } catch (e) {
+      body.innerHTML = `<div class="err" style="margin:8px">Gagal memuat riwayat.\n${esc(String(e))}</div>`;
+    }
+  }
+
+  function textOf(c) {
+    if (c == null) return "";
+    if (typeof c === "string") return c;
+    if (Array.isArray(c)) return c.map((p) => (typeof p === "string" ? p : p.text || "")).join("");
+    return JSON.stringify(c);
+  }
+
+  async function openSession(s) {
+    closePanels();
+    $("bannerText").textContent = "memuat riwayat…";
+    $("banner").style.display = "flex";
+    try {
+      const r = await fetch(`/api/sessions/${encodeURIComponent(s.id)}/messages?inline_images=false`, { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "gagal");
+      const msgs = [];
+      for (const m of j.data || []) {
+        if (m.role === "system") continue;
+        if (m.role === "tool") { msgs.push({ role: "tool", tool: m.tool_name || "tool", text: textOf(m.content) }); continue; }
+        if (m.role === "user") { msgs.push({ role: "user", text: textOf(m.content) }); continue; }
+        const tools = (m.tool_calls || []).map((tc) => ({
+          name: tc.function?.name || tc.name || "tool",
+          detail: String(tc.function?.arguments || tc.arguments || "").slice(0, 160),
+          done: true,
+        }));
+        const t = textOf(m.content);
+        const think = m.reasoning_content || m.reasoning || "";
+        if (t || tools.length || think) msgs.push({ role: "assistant", text: t, thinking: think, tools });
+      }
+      history = { id: s.id, title: s.title, source: s.source, messages: msgs };
+      $("bannerText").textContent =
+        `Riwayat (read-only) · ${s.title || "(tanpa judul)"} · sumber ${s.source} · ${msgs.length} pesan`;
+      input.disabled = true;
+      sendBtn.disabled = true;
+      statusEl.textContent = "mode riwayat";
+      sidEl.textContent = s.id;
+      render();
+      main.scrollTop = 0;
+    } catch (e) {
+      $("bannerText").textContent = "Gagal memuat riwayat: " + String(e);
+    }
+  }
+
+  $("bannerClose").onclick = () => {
+    history = null;
+    $("banner").style.display = "none";
+    input.disabled = false;
+    sendBtn.disabled = false;
+    statusEl.textContent = "siap";
+    sidEl.textContent = sessionId;
+    render();
+  };
+
+  // ---------------- pemilih model ----------------
+  function paintModel() {
+    $("modelProv").textContent = PROVIDER || "default";
+    $("modelName").textContent = MODEL || "…";
+  }
+
+  function renderModelList(q) {
+    const body = $("modelBody");
+    if (!options) { body.innerHTML = '<div class="phead">memuat…</div>'; return; }
+    const needle = (q || "").trim().toLowerCase();
+    const rows = [];
+    for (const p of options.providers || []) {
+      for (const mid of p.models || []) {
+        if (needle && !(p.slug + " " + p.name + " " + mid).toLowerCase().includes(needle)) continue;
+        rows.push({ prov: p.slug, name: p.name, authed: !!p.authenticated, mid });
+      }
+    }
+    rows.sort((a, b) => (b.authed - a.authed) || a.prov.localeCompare(b.prov) || a.mid.localeCompare(b.mid));
+    body.innerHTML = "";
+    const CAP = 300;                                     // daftar ~100 model; CAP menjaga render tetap ringan
+    for (const r of rows.slice(0, CAP)) {
+      const el = document.createElement("div");
+      el.className = "mrow" + (r.authed ? "" : " na") + (r.mid === MODEL && r.prov === PROVIDER ? " sel" : "");
+      el.innerHTML = `<span class="prov">${esc(r.prov)}</span><span class="id">${esc(r.mid)}</span>`;
+      el.title = r.name + (r.authed ? " · terautentikasi" : " · belum terautentikasi");
+      el.onclick = () => {
+        MODEL = r.mid; PROVIDER = r.prov;
+        save(); paintModel(); closePanels();
+        statusEl.textContent = "model: " + r.prov + " · " + r.mid;
+      };
+      body.appendChild(el);
+    }
+    if (rows.length > CAP) {
+      const more = document.createElement("div");
+      more.className = "phead";
+      more.textContent = `+${rows.length - CAP} lagi — persempit pencarian`;
+      body.appendChild(more);
+    }
+    if (!rows.length) body.innerHTML = '<div class="phead">tidak ada yang cocok</div>';
+  }
+
+  async function loadOptions() {
+    try {
+      const r = await fetch("/api/model/options", { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "gagal");
+      options = j;
+      if (!MODEL) { MODEL = j.model || "hermes-agent"; PROVIDER = j.provider || ""; save(); }
+      paintModel();
+      renderModelList($("modelSearch").value);
+    } catch (e) {
+      $("modelBody").innerHTML =
+        `<div class="err" style="margin:8px">Gagal memuat daftar model.\n${esc(String(e))}</div>`;
+      if (!MODEL) { MODEL = "hermes-agent"; paintModel(); }
+    }
+  }
+
+  $("modelBtn").onclick = () => {
+    openPanel("modelPanel");
+    if (!options) loadOptions(); else renderModelList($("modelSearch").value);
+  };
+  $("modelSearch").oninput = (e) => renderModelList(e.target.value);
+  $("history").onclick = () => { openPanel("histPanel"); loadHistory(); };
+  $("histRefresh").onclick = loadHistory;
+
+  // ---------------- sesi login ----------------
+  $("logout").onclick = async () => {
+    if (live.length && !confirm("Keluar dari sesi login ini? Percakapan yang belum tersimpan akan hilang.")) return;
+    try { await fetch("/logout", { method: "POST", headers: { "Accept": "application/json" } }); } catch {}
+    location.replace("/login");
+  };
+  async function loadWho() {
+    try {
+      const r = await fetch("/healthz", { cache: "no-store" });
+      const j = await r.json();
+      if (j.user) { $("who").textContent = j.user; $("who").title = "Login sebagai " + j.user; }
+      else { $("who").style.display = "none"; }
+    } catch { $("who").style.display = "none"; }
+  }
+
+  // ---------------- setelan: konfirmasi perintah ----------------
+  const SCOPE_LABEL = {
+    session: "Terima untuk sesi ini",
+    once: "Terima sekali saja",
+    always: "Selalu terima (permanen)",
+  };
+  const SCOPE_HINT = {
+    session: "Berlaku sampai sesi chat ini selesai. Tidak ada yang ditulis ke disk Hermes — ini yang disarankan.",
+    once: "Hanya perintah itu; permintaan berikutnya dijawab otomatis lagi satu per satu.",
+    always: "Menulis allowlist permanen ke disk Hermes, jadi perintah serupa tidak akan ditanya lagi sekarang maupun nanti. Pilih ini hanya kalau memang mau permanen.",
+  };
+
+  function paintAuto() {
+    const b = $("auto");
+    b.textContent = APPROVAL === "auto" ? "⚡ Auto: ON" : "⚡ Auto: OFF";
+    b.classList.toggle("primary", APPROVAL === "auto");
+    b.title = (APPROVAL === "auto"
+      ? "Jalan tanpa konfirmasi — permintaan konfirmasi dijawab otomatis (" + SCOPE_LABEL[AUTO_SCOPE] + ")."
+      : "Tanya dulu — permintaan konfirmasi menunggu klikmu.")
+      + " Klik untuk mengubah, atau buka ⚙ untuk pilihan lengkap.";
+  }
+
+  function setRow({ on, label, hint, pick }) {
+    const row = document.createElement("div");
+    row.className = "setrow" + (on ? " on" : "");
+    const mark = document.createElement("span");
+    mark.className = "mark";
+    const box = document.createElement("div");
+    const l = document.createElement("div");
+    l.className = "lbl";
+    l.textContent = label;
+    const h = document.createElement("div");
+    h.className = "hint2";
+    h.textContent = hint;
+    box.appendChild(l);
+    box.appendChild(h);
+    row.appendChild(mark);
+    row.appendChild(box);
+    row.onclick = () => {
+      pick();
+      save();
+      paintAuto();
+      renderSettings();
+      statusEl.textContent = APPROVAL === "auto"
+        ? "tanpa konfirmasi: aktif · " + SCOPE_LABEL[AUTO_SCOPE]
+        : "konfirmasi: tanya dulu";
+    };
+    return row;
+  }
+
+  function renderSettings() {
+    const body = $("settingsBody");
+    body.innerHTML = "";
+
+    const h1 = document.createElement("div");
+    h1.className = "phead";
+    h1.textContent = "Kalau Hermes minta konfirmasi";
+    body.appendChild(h1);
+
+    body.appendChild(setRow({
+      on: APPROVAL === "auto",
+      label: "Jalan tanpa konfirmasi (auto terima)",
+      hint: "Kartunya tetap dicetak di transkrip sebagai catatan, tapi tidak ada yang menunggu klikmu.",
+      pick: () => { APPROVAL = "auto"; },
+    }));
+    body.appendChild(setRow({
+      on: APPROVAL === "ask",
+      label: "Tanya dulu (tampilkan kartu)",
+      hint: "Run berhenti sampai kamu tekan salah satu tombol di kartu konfirmasi.",
+      pick: () => { APPROVAL = "ask"; },
+    }));
+
+    if (APPROVAL === "auto") {
+      const h2 = document.createElement("div");
+      h2.className = "phead";
+      h2.textContent = "Scope jawaban otomatis";
+      body.appendChild(h2);
+      for (const key of ["session", "once", "always"]) {
+        body.appendChild(setRow({
+          on: AUTO_SCOPE === key,
+          label: SCOPE_LABEL[key],
+          hint: SCOPE_HINT[key],
+          pick: () => { AUTO_SCOPE = key; },
+        }));
+      }
+    }
+
+    const note = document.createElement("div");
+    note.className = "setnote";
+    note.textContent = "Setelan ini tersimpan per-browser (localStorage) dan hanya berlaku untuk halaman web ini "
+      + "— TUI, dashboard, dan Open WebUI punya kebijakannya sendiri.\n"
+      + "Perintah yang diblokir hardline oleh Hermes tetap ditolak: halaman ini tidak bisa meloloskannya.";
+    body.appendChild(note);
+  }
+
+  $("auto").onclick = () => {
+    APPROVAL = APPROVAL === "auto" ? "ask" : "auto";
+    save();
+    paintAuto();
+    renderSettings();
+    statusEl.textContent = APPROVAL === "auto"
+      ? "tanpa konfirmasi: aktif · " + SCOPE_LABEL[AUTO_SCOPE]
+      : "konfirmasi: tanya dulu";
+    render();
+  };
+  $("settings").onclick = () => { openPanel("settingsPanel"); renderSettings(); };
+
+  // ---------------- misc ----------------
+  function autoGrow() {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 210) + "px";
+  }
+  async function probe() {
+    try {
+      const r = await fetch("/api/models", { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "gagal");
+      dot.className = "dot on";
+    } catch (e) {
+      dot.className = "dot off";
+      if (!history) statusEl.textContent = "API server offline — lihat README webchat";
+    }
+  }
+
+  // delegasi: tombol "Salin" di blok kode + buka/tutup folder di tampilan pohon.
+  // Dipasang sekali di #wrap sebab isi transkrip di-render ulang terus saat streaming.
+  wrap.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest(".copy");
+    if (btn) {
+      const box = btn.closest(".cbox");
+      const target = box && (box.querySelector("pre code") || box.querySelector(".tree"));
+      const text = target ? (target.innerText || target.textContent || "") : "";
+      let ok = false;
+      try { await navigator.clipboard.writeText(text); ok = true; }
+      catch {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.setAttribute("readonly", "");
+          ta.style.cssText = "position:fixed;top:-1000px;opacity:0";
+          document.body.appendChild(ta);
+          ta.select();
+          ok = document.execCommand("copy");
+          ta.remove();
+        } catch { ok = false; }
+      }
+      btn.textContent = ok ? "Tersalin ✓" : "Gagal menyalin";
+      setTimeout(() => { btn.textContent = "Salin"; }, 1500);
+      return;
+    }
+    const row = ev.target.closest(".tree li.dir > .row");
+    if (row) row.parentElement.classList.toggle("closed");
+  });
+
+  sendBtn.onclick = send;
+  stopBtn.onclick = stopRun;
+  $("clear").onclick = () => {
+    if (history) { $("bannerClose").onclick(); return; }
+    if (live.length && !confirm("Hapus percakapan ini?")) return;
+    live = []; sessionId = newSessionId();
+    sidEl.textContent = sessionId;
+    render(); input.focus();
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+  });
+  input.addEventListener("input", autoGrow);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePanels(); });
+
+  render();
+  sidEl.textContent = sessionId;
+  paintModel();
+  paintAuto();
+  renderSettings();
+  loadOptions();
+  loadWho();
+  probe();
+  setInterval(probe, 20000);
+  input.focus();
+})();
+</script>
+</body>
+</html>

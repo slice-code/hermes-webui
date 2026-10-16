@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Masuk — Hermes Chat</title>
+<style>
+  :root{
+    --bg:#0f1115; --bg2:#161a21; --bg3:#1d222b; --line:#262c37;
+    --fg:#e6e9ef; --dim:#8b93a1; --acc:#7aa2f7; --acc2:#bb9af7;
+    --ok:#9ece6a; --warn:#e0af68; --err:#f7768e; --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    display:grid; place-items:center; padding:24px;
+  }
+  .card{
+    width:100%; max-width:360px; background:var(--bg2); border:1px solid var(--line);
+    border-radius:var(--radius); padding:22px 20px 20px;
+    box-shadow:0 18px 50px rgba(0,0,0,.45);
+  }
+  .brand{display:flex; align-items:center; gap:9px; margin-bottom:4px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--acc);flex:none}
+  h1{font-size:15px; margin:0; font-weight:600; letter-spacing:.02em}
+  p.sub{margin:6px 0 18px; color:var(--dim); font-size:13px}
+  label{display:block; font-size:12px; color:var(--dim); margin:0 0 5px; letter-spacing:.02em}
+  input{
+    width:100%; font:inherit; font-size:14px; color:var(--fg); background:var(--bg3);
+    border:1px solid var(--line); border-radius:8px; padding:9px 11px; margin-bottom:13px;
+  }
+  input:focus{outline:none; border-color:var(--acc)}
+  button{
+    width:100%; font:inherit; font-size:14px; font-weight:600; color:#0b1020;
+    background:var(--acc); border:1px solid var(--acc); border-radius:8px;
+    padding:10px 12px; cursor:pointer;
+  }
+  button:hover{filter:brightness(1.08)}
+  button:disabled{opacity:.5; cursor:default; filter:none}
+  .err{
+    display:none; margin:0 0 13px; padding:9px 11px; font-size:13px;
+    color:var(--err); background:rgba(247,118,142,.09);
+    border:1px solid rgba(247,118,142,.35); border-radius:8px; white-space:pre-wrap;
+  }
+  .hint{margin:14px 0 0; color:var(--dim); font-size:11.5px; line-height:1.5}
+  code{font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--acc2)}
+</style>
+</head>
+<body>
+<form class="card" id="form" autocomplete="on">
+  <div class="brand"><span class="dot"></span><h1>Hermes Chat</h1></div>
+  <p class="sub">Masuk dulu sebelum memakai chat ini.</p>
+
+  <div class="err" id="err"></div>
+
+  <label for="username">Username</label>
+  <input id="username" name="username" type="text" autocomplete="username"
+         autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus>
+
+  <label for="password">Password</label>
+  <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+  <button id="submit" type="submit">Masuk</button>
+  <p class="hint">Sesi berlaku 7 hari (cookie HttpOnly, SameSite=Lax). Ganti password di server:
+    <code>python3 server.py --set-password</code></p>
+</form>
+
+<script>
+  const form = document.getElementById("form");
+  const errBox = document.getElementById("err");
+  const btn = document.getElementById("submit");
+
+  function show(message) {
+    errBox.textContent = message;
+    errBox.style.display = message ? "block" : "none";
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    btn.disabled = true;
+    show("");
+    try {
+      const res = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: document.getElementById("username").value,
+          password: document.getElementById("password").value,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        location.replace(data.redirect || "/");
+        return;
+      }
+      show(data.error ? `${data.error}\n${data.detail || ""}`.trim() : `Gagal masuk (HTTP ${res.status})`);
+      document.getElementById("password").value = "";
+    } catch (e) {
+      show(`Tidak bisa menghubungi server: ${e}`);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+# --- Rahasia & state runtime: JANGAN di-commit ---
+# auth.json menyimpan hash password + salt + secret penanda tangan cookie.
+# Dibuat otomatis saat pertama kali dijalankan; lihat README bagian Login.
+auth.json
+*.secret
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# --- Log & state lokal ---
+*.log
+cookies.txt
+sessions/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+*.swp
+*~

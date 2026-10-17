@@ -12,6 +12,8 @@ sungguhan yang bicara ke **API server Hermes** yang OpenAI-compatible.
 - Tombol **Chat baru** mengosongkan percakapan; riwayat disimpan di localStorage browser
 - Tombol **Riwayat** membuka daftar sesi (semua sumber); **Lanjutkan chat** di banner
   menjadikan sesi terpilih sebagai percakapan aktif — pesan baru masuk ke sesi yang sama
+- Tombol **🤖 Agent** di header membuka **halaman Pemantau Agent** (`/agents`) — lihat bagian
+  **Pemantau Agent** di bawah
 - Tombol **Keluar** (kanan header) mengakhiri sesi; tombol di sebelahnya menampilkan user aktif
 - Tombol **⚡ Auto** adalah saklar cepat tanpa konfirmasi; **⚙ Setelan** membuka pilihan lengkap (lihat **Auto approve**)
 
@@ -71,6 +73,15 @@ curl -s -c jar -X POST http://127.0.0.1:8650/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"…"}'                               # 200 + Set-Cookie
 curl -s -b jar -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8650/   # 200
+```
+
+Pemantau Agent (cookie yang sama):
+
+```bash
+curl -s -b jar http://127.0.0.1:8650/agents | grep -c 'id="agent-monitor"'   # 1
+curl -s -b jar http://127.0.0.1:8650/api/agents/boards                       # daftar board
+curl -s -b jar 'http://127.0.0.1:8650/api/agents/board?slug=pjtki'           # counts + tasks
+curl -s -b jar 'http://127.0.0.1:8650/api/agents/board?slug=../../etc'       # 400 (ditolak)
 ```
 
 ### Menampilkan laporan: tabel, kode, dan pohon
@@ -204,12 +215,78 @@ baru ditambahkan **ke sesi yang sama** (bukan fork/salinan). Sesi dari permukaan
 ada di DB dan menulis lanjutannya di sana (diuji pada sesi `cli`: 22 → 24 pesan, `source`
 tetap `cli`). Tombol **Tutup** tetap ada untuk sekadar membaca tanpa mengubah sesi.
 
+## Pemantau Agent (`/agents`)
+
+Halaman kedua di app ini: **memantau pekerjaan agent** di papan kanban Hermes
+(status, siapa agent-nya, progress, aktivitas terakhir). Dibuat mobile-first — satu
+kolom, target sentuh ≥44 px, tanpa scroll horizontal dari 320 px sampai desktop.
+Dibuka lewat tombol **🤖 Agent** di header chat (dan tautan **← Kembali ke chat** untuk
+balik ke `/`). Cookie sesi yang sama berlaku; tanpa sesi tetap dialihkan ke `/login`.
+
+Isi halaman:
+
+| Bagian | Isi |
+|---|---|
+| Header lengket | judul **Pemantau Agent**, pemilih board, tombol muat ulang, tautan kembali ke chat |
+| Indikator | titik status (hijau/merah) + "diperbarui Ns lalu" |
+| Chip ringkasan | `Berjalan n` · `Siap n` · `Menunggu n` · `Terhenti n` · `Selesai n` (+ chip lain hanya kalau ada isinya). **Ketuk = filter, ketuk lagi = lepas** |
+| Kartu task | badge status berwarna, nama agent, waktu relatif, judul maks 2 baris; untuk task `running` ada titik berdenyut + PID hidup/mati |
+| Panel detail | ketuk kartu → sheet: status/agent/PID/heartbeat, path workspace (mono + tombol **Salin**), body lengkap, komentar terakhir, event terakhir, run worker, induk/lanjutan |
+
+Perilaku data:
+
+- **Auto-refresh 10 detik**, tapi **berhenti saat tab tidak terlihat** (`document.hidden`)
+  dan menyegarkan **sekali** begitu tab kembali aktif; kalau fetch gagal, daftar yang
+  sudah tampil tetap ada dan hanya muncul baris peringatan kecil.
+- Board `default` tampil walau belum pernah dipakai; board kosong menampilkan empty-state
+  ("Belum ada task di board ini").
+
+### Endpoint JSON (lokal, bukan proxy)
+
+Semua di bawah ini **lokal**: dibaca langsung dari SQLite kanban, tidak diteruskan ke
+gateway, jadi API key tidak ikut dan tidak ada rute proxy baru. Tetap wajib **sesi login**
+dan **same-origin** (Origin/Referer dicek → 403; tanpa sesi → 401/302).
+
+| Endpoint | Isi |
+|---|---|
+| `GET /api/agents/boards` | array `[{slug, name, description, task_count, running_count, current}]` — `default` lebih dulu, lalu board lain terurut; board yang diarsipkan dilewati |
+| `GET /api/agents/board?slug=<slug>&limit=<n>` | `{board, generated_at, counts, tasks, has_db, returned, truncated}`; `limit` 1–200 (default 150) |
+| `GET /api/agents/task?slug=<slug>&id=<task_id>` | satu task lengkap: `body` penuh, `comments` (10 terakhir), `events` (20 terakhir), `runs` (5 terakhir) |
+
+Bentuk `tasks[]`: `id, title, status, assignee, priority, created_at, started_at,
+completed_at, worker_pid, worker_alive, last_heartbeat_at, workspace_path, workspace_kind,
+branch_name, block_kind, body_preview (≤400 char), body_truncated, comment_count,
+last_comment, last_event, parents, children` — **body penuh tidak pernah dikirim di
+endpoint daftar** (bisa sangat panjang); ambil lewat `/api/agents/task`.
+
+`counts` memuat `running/ready/todo/blocked/review/done/archived` + `total`; `running` di
+atas pada daftar task dan **task arsip tidak ikut dikirim** (hanya dihitung). Ini sebabnya
+angka `counts` cocok dengan `hermes kanban --board <slug> list`, sementara `total` juga
+menghitung arsip seperti `hermes kanban boards list`.
+
+Detail teknis & keamanan:
+
+- **Read-only**: setiap koneksi dibuka `sqlite3.connect("file:…?mode=ro", uri=True)` dengan
+  timeout kecil + **retry sekali** kalau DB sedang terkunci (WAL). Tidak ada satu pun jalur
+  tulis ke `kanban.db`.
+- `slug` divalidasi `^[a-z0-9][a-z0-9_-]{0,63}$` (huruf besar dinormalkan ke kecil) dan
+  `id` task divalidasi regex; slug yang tidak sah → **400**, board tidak dikenal → **404**,
+  jadi `slug=../../etc` ditolak 400 dan bukan 500. Path DB juga dicek `relative_to()` ke
+  direktori `boards/` sebagai sabuk pengaman kedua.
+- Lokasi papan mengikuti Hermes: `default` = `<root>/kanban.db`, board lain =
+  `<root>/kanban/boards/<slug>/kanban.db`, board aktif dari `<root>/kanban/current`
+  (`<root>` = `~/.hermes`). Pin `HERMES_KANBAN_DB`/`HERMES_KANBAN_BOARD` sengaja **tidak**
+  dipakai — itu penanda worker (satu papan), sedangkan halaman ini melihat semua papan.
+- `worker_alive` = status `running` **dan** `/proc/<pid>` ada. Tidak ada dependensi baru
+  (stdlib Python + JS bawaan browser, tanpa CDN).
+
 ## File
 
 | File | Isi |
 |---|---|
-| `server.py` | Server + reverse proxy + login (stdlib Python saja, tanpa dependensi) |
+| `server.py` | Server + reverse proxy + login (stdlib Python saja, tanpa dependensi) + endpoint `/api/agents/*` |
 | `static/index.html` | Seluruh UI chat (HTML + CSS + JS, tanpa CDN) |
+| `static/agents.html` | Halaman **Pemantau Agent** (`/agents`) — papan kanban, mobile-first |
 | `static/login.html` | Halaman login |
 | `auth.json` | Username + hash PBKDF2 + signing secret (mode `600`, jangan di-commit) |
 | `~/.config/systemd/user/hermes-webchat.service` | Unit systemd user (enabled, linger aktif) |
@@ -229,6 +306,10 @@ tidak ada kredensial di localStorage — berbeda dengan menembak 8642 langsung d
 
 Percakapan memakai header `X-Hermes-Session-Id`, jadi sesi, transcript, dan memory
 Hermes berlanjut antar pesan, bukan mulai dari nol setiap kali.
+
+Halaman **Pemantau Agent** (`/agents`) tidak lewat gateway sama sekali: `server.py`
+membaca file SQLite kanban Hermes langsung (read-only). Jadi halaman itu tetap bisa
+dibuka walau API server sedang mati — yang tidak jalan hanya halaman chat-nya.
 
 ## Prasyarat yang wajib
 

@@ -21,7 +21,9 @@ import hmac
 import json
 import os
 import posixpath
+import re
 import secrets
+import sqlite3
 import sys
 import threading
 import time
@@ -262,6 +264,435 @@ def _server_start_banner() -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# Pemantau Agent — baca papan kanban Hermes (READ-ONLY)
+#
+# Halaman /agents menampilkan task kanban: status, agent yang mengerjakan, dan
+# aktivitas terakhir. Sumbernya file SQLite kanban milik Hermes, bukan gateway —
+# jadi tidak ada rute baru yang di-proxy dan tidak ada API key yang ikut ke
+# browser. Semua koneksi dibuka `mode=ro` (URI sqlite), sehingga halaman ini
+# tidak mungkin menulis ke papan.
+#
+# Lokasi (meniru hermes_cli.kanban_db): board `default` = <root>/kanban.db,
+# board lain = <root>/kanban/boards/<slug>/kanban.db, board aktif dicatat di
+# <root>/kanban/current. Pin `HERMES_KANBAN_DB` / `HERMES_KANBAN_BOARD` sengaja
+# tidak dipakai: itu penanda worker (worker hanya boleh melihat satu papan),
+# sementara halaman ini memang ingin melihat semua papan.
+# ---------------------------------------------------------------------------
+
+BOARD_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+AGENT_STATUS_KEYS = ("running", "ready", "todo", "blocked", "review", "done", "archived")
+AGENT_DEFAULT_LIMIT = 150
+AGENT_MAX_LIMIT = 200
+AGENT_PREVIEW_CHARS = 400
+AGENT_COMMENT_PREVIEW = 400
+AGENT_EVENT_PREVIEW = 240
+AGENT_BODY_MAX = 20000
+AGENT_DETAIL_COMMENTS = 10
+AGENT_DETAIL_EVENTS = 20
+AGENT_DETAIL_RUNS = 5
+
+
+def _hermes_root() -> Path:
+    """Root instalasi Hermes (tempat `kanban.db` board default).
+
+    Meniru `hermes_constants.get_default_hermes_root()`: HERMES_HOME yang menunjuk
+    `<root>/profiles/<nama>` dipetakan balik ke `<root>`, sedangkan HERMES_HOME
+    biasa di dalam `~/.hermes` tetap memakai `~/.hermes`.
+    """
+    native = Path(os.path.expanduser("~")) / ".hermes"
+    env_home = (os.environ.get("HERMES_HOME") or "").strip()
+    if not env_home:
+        return native
+    candidate = Path(os.path.expanduser(env_home))
+    try:
+        candidate.resolve().relative_to(native.resolve())
+        return native
+    except (ValueError, OSError):
+        if candidate.parent.name == "profiles":
+            return candidate.parent.parent
+        return candidate
+
+
+def _kanban_home() -> Path:
+    override = (os.environ.get("HERMES_KANBAN_HOME") or "").strip()
+    return Path(os.path.expanduser(override)) if override else _hermes_root()
+
+
+def _boards_root() -> Path:
+    return _kanban_home() / "kanban" / "boards"
+
+
+def _board_dir(slug: str) -> Path:
+    return _boards_root() / slug
+
+
+def _board_db_path(slug: str) -> Path:
+    """`kanban.db` satu board. Board `default` tetap di `<root>/kanban.db`."""
+    if slug == "default":
+        return _kanban_home() / "kanban.db"
+    root = _boards_root().resolve()
+    target = (_boards_root() / slug / "kanban.db").resolve()
+    try:
+        # Sabuk pengaman kedua: slug sudah divalidasi regex, tapi seandainya ada
+        # jalur yang lolos, file yang dibaca tidak boleh keluar dari boards/.
+        target.relative_to(root)
+    except ValueError:
+        raise ValueError("slug board keluar dari direktori boards") from None
+    return target
+
+
+def _display_name(slug: str) -> str:
+    """`atm10-server` -> `Atm10 Server` (sama seperti CLI)."""
+    return " ".join(w.capitalize() for w in slug.replace("_", "-").split("-") if w) or slug
+
+
+def _board_meta(slug: str) -> dict:
+    """Metadata board dari `board.json`; tidak pernah melempar error."""
+    meta = {"slug": slug, "name": _display_name(slug), "description": "", "archived": False}
+    try:
+        raw = json.loads((_board_dir(slug) / "board.json").read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return meta
+    if isinstance(raw, dict):
+        if raw.get("name"):
+            meta["name"] = str(raw["name"])
+        if raw.get("description"):
+            meta["description"] = str(raw["description"])
+        meta["archived"] = bool(raw.get("archived"))
+    return meta
+
+
+def _board_exists(slug: str) -> bool:
+    """`default` selalu ada; board lain wajib punya `board.json` (penanda identitas)."""
+    if slug == "default":
+        return True
+    return (_board_dir(slug) / "board.json").is_file()
+
+
+def _current_board() -> str:
+    """Slug board aktif dari `<root>/kanban/current`; kosong/basi -> `default`."""
+    try:
+        raw = (_kanban_home() / "kanban" / "current").read_text(encoding="utf-8-sig").strip().lower()
+    except OSError:
+        return "default"
+    if BOARD_SLUG_RE.match(raw) and _board_exists(raw) and not _board_meta(raw).get("archived"):
+        return raw
+    return "default"
+
+
+def list_board_meta() -> list:
+    """`default` lebih dulu, lalu `boards/<slug>/` yang punya `board.json`, terurut."""
+    metas = [_board_meta("default")]
+    root = _boards_root()
+    if not root.is_dir():
+        return metas
+    for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+        if not child.is_dir() or child.name == "default" or not BOARD_SLUG_RE.match(child.name):
+            continue
+        if not (child / "board.json").is_file():
+            continue                      # direktori sisa (bukan board)
+        meta = _board_meta(child.name)
+        if meta.get("archived"):
+            continue                      # tombstone hasil `boards rm`
+        metas.append(meta)
+    return metas
+
+
+def _open_board_db(db: Path):
+    """Koneksi sqlite3 read-only. `mode=ro` = jaminan tidak ada tulisan."""
+    conn = sqlite3.connect(db.as_uri() + "?mode=ro", uri=True, timeout=1.5)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _board_query(db: Path, work):
+    """Jalankan `work(conn)`, ulangi sekali kalau DB sedang terkunci (WAL)."""
+    for attempt in (1, 2):
+        conn = None
+        try:
+            conn = _open_board_db(db)
+            return work(conn)
+        except sqlite3.OperationalError:
+            if attempt == 1:
+                time.sleep(0.15)
+                continue
+            raise
+        except sqlite3.Error as exc:
+            raise RuntimeError("kanban.db tidak bisa dibaca: %s" % exc) from exc
+        finally:
+            if conn is not None:
+                conn.close()
+    raise RuntimeError("kanban.db tidak bisa dibaca")
+
+
+def _placeholder(values) -> str:
+    return "(" + ",".join("?" for _ in values) + ")"
+
+
+def _status_counts(slug: str) -> dict:
+    """`{status: jumlah}`; `{}` kalau DB-nya belum ada (board kosong)."""
+    db = _board_db_path(slug)
+    if not db.is_file():
+        return {}
+
+    def work(conn):
+        rows = conn.execute("SELECT status, COUNT(*) AS n FROM tasks GROUP BY status").fetchall()
+        return {str(r["status"]): int(r["n"]) for r in rows}
+
+    try:
+        return _board_query(db, work)
+    except (sqlite3.Error, RuntimeError, ValueError):
+        return {}
+
+
+def _agent_limit(query: dict) -> int:
+    raw = (query.get("limit") or [""])[0].strip()
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return AGENT_DEFAULT_LIMIT
+    return max(1, min(AGENT_MAX_LIMIT, value))
+
+
+def _pid_alive(pid) -> bool:
+    try:
+        return bool(pid) and Path("/proc/%d" % int(pid)).is_dir()
+    except (TypeError, ValueError):
+        return False
+
+
+def _agent_tasks(conn, limit: int) -> list:
+    """Task terbaru per status, `running` di atas. Arsip tidak pernah ikut."""
+    rank = "CASE status " + " ".join("WHEN ? THEN ?" for _ in AGENT_STATUS_KEYS) + " ELSE 9 END"
+    params: list = []
+    for index, key in enumerate(AGENT_STATUS_KEYS):
+        params += [key, index]
+    sql = (
+        "SELECT id, title, assignee, status, priority, created_at, started_at, completed_at, "
+        "worker_pid, workspace_path, workspace_kind, branch_name, last_heartbeat_at, block_kind, "
+        "substr(COALESCE(body, ''), 1, %d) AS body_preview, "
+        "length(COALESCE(body, '')) AS body_len "
+        "FROM tasks WHERE status <> ? ORDER BY %s, COALESCE(started_at, created_at) DESC LIMIT ?"
+        % (AGENT_PREVIEW_CHARS, rank)
+    )
+    params.append(limit)
+    return conn.execute(sql, ["archived"] + params).fetchall()
+
+
+def _comment_counts(conn, ids: list) -> dict:
+    if not ids:
+        return {}
+    rows = conn.execute(
+        "SELECT task_id, COUNT(*) AS n FROM task_comments WHERE task_id IN %s GROUP BY task_id"
+        % _placeholder(ids), list(ids))
+    return {str(r["task_id"]): int(r["n"]) for r in rows}
+
+
+def _last_comments(conn, ids: list) -> dict:
+    """Komentar terakhir per task (dipotong) — untuk daftar, bukan isi penuh."""
+    if not ids:
+        return {}
+    rows = conn.execute(
+        "SELECT task_id, author, substr(COALESCE(body, ''), 1, %d) AS body, created_at "
+        "FROM task_comments WHERE id IN "
+        "(SELECT MAX(id) FROM task_comments WHERE task_id IN %s GROUP BY task_id)"
+        % (AGENT_COMMENT_PREVIEW, _placeholder(ids)), list(ids))
+    out = {}
+    for r in rows:
+        out[str(r["task_id"])] = {"author": r["author"], "body": r["body"],
+                                  "created_at": r["created_at"]}
+    return out
+
+
+def _last_events(conn, ids: list) -> dict:
+    if not ids:
+        return {}
+    rows = conn.execute(
+        "SELECT task_id, kind, substr(COALESCE(CAST(payload AS TEXT), ''), 1, %d) AS payload, "
+        "created_at FROM task_events WHERE id IN "
+        "(SELECT MAX(id) FROM task_events WHERE task_id IN %s GROUP BY task_id)"
+        % (AGENT_EVENT_PREVIEW, _placeholder(ids)), list(ids))
+    out = {}
+    for r in rows:
+        out[str(r["task_id"])] = {"kind": r["kind"], "payload_preview": r["payload"],
+                                  "created_at": r["created_at"]}
+    return out
+
+
+def _task_link_map(conn, ids: list):
+    """`(parents, children)` — masing-masing `{task_id: [id, ...]}`."""
+    parents: dict = {i: [] for i in ids}
+    children: dict = {i: [] for i in ids}
+    if not ids:
+        return parents, children
+    where = _placeholder(ids)
+    rows = conn.execute(
+        "SELECT parent_id, child_id FROM task_links WHERE parent_id IN %s OR child_id IN %s"
+        % (where, where), list(ids) + list(ids))
+    for r in rows:
+        parent, child = str(r["parent_id"]), str(r["child_id"])
+        if child in parents:
+            parents[child].append(parent)
+        if parent in children:
+            children[parent].append(child)
+    return parents, children
+
+
+def _row_field(row, key, default=None):
+    """Nilai kolom kalau ada — detail memakai `SELECT *`, daftar memakai kolom terpilih."""
+    try:
+        return row[key]
+    except (IndexError, KeyError):
+        return default
+
+
+def _task_summary(row, *, comment_count: int, last_comment, last_event,
+                  parents: list, children: list) -> dict:
+    pid = row["worker_pid"]
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "status": row["status"],
+        "assignee": row["assignee"],
+        "priority": row["priority"],
+        "created_at": row["created_at"],
+        "started_at": row["started_at"],
+        "completed_at": row["completed_at"],
+        "worker_pid": pid,
+        "worker_alive": bool(row["status"] == "running" and _pid_alive(pid)),
+        "last_heartbeat_at": row["last_heartbeat_at"],
+        "workspace_path": row["workspace_path"],
+        "workspace_kind": row["workspace_kind"],
+        "branch_name": row["branch_name"],
+        "block_kind": row["block_kind"],
+        "body_preview": _row_field(row, "body_preview", "") or "",
+        "body_truncated": bool((_row_field(row, "body_len", 0) or 0) > AGENT_PREVIEW_CHARS),
+        "comment_count": comment_count,
+        "last_comment": last_comment,
+        "last_event": last_event,
+        "parents": parents,
+        "children": children,
+    }
+
+
+def agent_board_payload(slug: str, limit: int) -> dict:
+    """Payload `GET /api/agents/board` untuk satu board."""
+    info = _board_meta(slug)
+    info.pop("archived", None)
+    info["current"] = bool(slug == _current_board())
+    payload = {
+        "board": info,
+        "generated_at": int(time.time()),
+        "counts": {},
+        "tasks": [],
+        "has_db": _board_db_path(slug).is_file(),
+    }
+    if not payload["has_db"]:
+        payload["counts"] = {key: 0 for key in AGENT_STATUS_KEYS}
+        payload["counts"]["total"] = 0
+        return payload
+
+    def work(conn):
+        counts: dict = {key: 0 for key in AGENT_STATUS_KEYS}
+        for row in conn.execute("SELECT status, COUNT(*) AS n FROM tasks GROUP BY status"):
+            counts[str(row["status"])] = int(row["n"])
+        counts["total"] = sum(v for k, v in counts.items() if k != "total")
+
+        rows = _agent_tasks(conn, limit)
+        ids = [str(r["id"]) for r in rows]
+        counts_by_task = _comment_counts(conn, ids)
+        comments = _last_comments(conn, ids)
+        events = _last_events(conn, ids)
+        parents, children = _task_link_map(conn, ids)
+        tasks = [
+            _task_summary(
+                r,
+                comment_count=counts_by_task.get(str(r["id"]), 0),
+                last_comment=comments.get(str(r["id"])),
+                last_event=events.get(str(r["id"])),
+                parents=sorted(parents.get(str(r["id"]), [])),
+                children=sorted(children.get(str(r["id"]), [])),
+            )
+            for r in rows
+        ]
+        return {"counts": counts, "tasks": tasks, "returned": len(tasks)}
+
+    payload.update(_board_query(_board_db_path(slug), work))
+    counts = payload.get("counts", {})
+    visible = int(counts.get("total", 0)) - int(counts.get("archived", 0))
+    payload["truncated"] = bool(visible > payload.get("returned", 0))
+    return payload
+
+
+def agent_task_payload(slug: str, task_id: str) -> dict | None:
+    """Payload `GET /api/agents/task`: satu task lengkap (body penuh + riwayat)."""
+    db = _board_db_path(slug)
+    if not db.is_file():
+        return None
+
+    def work(conn):
+        row = conn.execute(
+            "SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if row is None:
+            return None
+        ids = [task_id]
+        counts_by_task = _comment_counts(conn, ids)
+        comments = [
+            {"author": r["author"],
+             "body": (r["body"] or "")[:4000],
+             "created_at": r["created_at"]}
+            for r in conn.execute(
+                "SELECT author, body, created_at FROM task_comments WHERE task_id = ? "
+                "ORDER BY created_at DESC, id DESC LIMIT ?", (task_id, AGENT_DETAIL_COMMENTS))
+        ]
+        comments.reverse()               # terlama -> terbaru, enak dibaca dari atas
+        events = [
+            {"kind": r["kind"],
+             "payload_preview": (r["payload"] or "")[:AGENT_EVENT_PREVIEW],
+             "created_at": r["created_at"]}
+            for r in conn.execute(
+                "SELECT kind, CAST(payload AS TEXT) AS payload, created_at FROM task_events "
+                "WHERE task_id = ? ORDER BY id DESC LIMIT ?", (task_id, AGENT_DETAIL_EVENTS))
+        ]
+        events.reverse()
+        runs = [
+            {"id": r["id"], "profile": r["profile"], "status": r["status"],
+             "outcome": r["outcome"], "worker_pid": r["worker_pid"],
+             "started_at": r["started_at"], "ended_at": r["ended_at"],
+             "summary": (r["summary"] or "")[:400]}
+            for r in conn.execute(
+                "SELECT id, profile, status, outcome, worker_pid, started_at, ended_at, summary "
+                "FROM task_runs WHERE task_id = ? ORDER BY id DESC LIMIT ?",
+                (task_id, AGENT_DETAIL_RUNS))
+        ]
+        parents, children = _task_link_map(conn, ids)
+        task = _task_summary(
+            row,
+            comment_count=counts_by_task.get(task_id, 0),
+            last_comment=None,
+            last_event=None,
+            parents=sorted(parents.get(task_id, [])),
+            children=sorted(children.get(task_id, [])),
+        )
+        body = row["body"] or ""
+        task["body"] = body[:AGENT_BODY_MAX]
+        task["body_truncated"] = len(body) > AGENT_BODY_MAX
+        task["last_failure_error"] = row["last_failure_error"]
+        task["comments"] = comments
+        task["events"] = events
+        task["runs"] = runs
+        return task
+
+    task = _board_query(db, work)
+    if task is None:
+        return None
+    info = _board_meta(slug)
+    info.pop("archived", None)
+    return {"board": info, "generated_at": int(time.time()), "task": task}
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "hermes-webchat/1.0"
@@ -271,7 +702,9 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:  # noqa: A003 - stdlib signature
         sys.stderr.write("[webchat] %s - %s\n" % (self.address_string(), fmt % args))
 
-    def _json(self, status: int, payload: dict, extra_headers: list | None = None) -> None:
+    def _json(self, status: int, payload, extra_headers: list | None = None) -> None:
+        # `payload` boleh dict ATAU list (mis. `/api/agents/boards` mengembalikan
+        # daftar board langsung).
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -370,6 +803,17 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/", "/index.html"):
             return self._serve_static("index.html")
+        # Pemantau Agent (/agents + API JSON-nya). Endpoint ini LOKAL — membaca
+        # kanban.db sendiri, bukan diteruskan ke gateway — jadi tetap wajib sesi
+        # login (di atas) plus cek same-origin seperti jalur POST.
+        if path in ("/agents", "/agents/"):
+            if not self._same_origin():
+                return self._fail(403, "cross-origin ditolak")
+            return self._serve_static("agents.html")
+        if path in ("/api/agents/boards", "/api/agents/board", "/api/agents/task"):
+            if not self._same_origin():
+                return self._fail(403, "cross-origin ditolak")
+            return self._api_agents(path)
         if path == "/api/models":
             return self._proxy_models()
         # Hermes-specific read-only surface (curated model inventory + session history),
@@ -511,6 +955,79 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
+
+    # -- pemantau agent (kanban.db, read-only) ---------------------------
+
+    def _api_agents(self, path: str) -> None:
+        """`GET /api/agents/…` — data papan kanban Hermes untuk halaman /agents.
+
+        Read-only dan lokal (tidak di-proxy): slug divalidasi regex sebelum
+        menyentuh filesystem, jadi tidak ada jalur untuk keluar dari direktori
+        boards. `limit` dibatasi 1–200.
+        """
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        slug = (query.get("slug") or [""])[0].strip().lower()
+        bad_slug = self._board_slug_error(slug)
+
+        def check_slug() -> bool:
+            """True kalau boleh lanjut; kalau tidak, respons sudah dikirim."""
+            if bad_slug:
+                self._fail(400, "slug board tidak valid", bad_slug)
+                return False
+            if not _board_exists(slug):
+                self._fail(404, "board tidak ditemukan", slug)
+                return False
+            return True
+
+        try:
+            if path == "/api/agents/boards":
+                current = _current_board()
+                boards = []
+                for meta in list_board_meta():
+                    counts = _status_counts(meta["slug"])
+                    boards.append({
+                        "slug": meta["slug"],
+                        "name": meta["name"],
+                        "description": meta.get("description") or "",
+                        "task_count": sum(counts.values()),
+                        "running_count": int(counts.get("running", 0)),
+                        "current": bool(meta["slug"] == current),
+                    })
+                return self._json(200, boards)
+
+            if path == "/api/agents/board":
+                if not check_slug():
+                    return None
+                payload = agent_board_payload(slug, _agent_limit(query))
+                return self._json(200, payload)
+
+            if path == "/api/agents/task":
+                task_id = (query.get("id") or [""])[0].strip()
+                if not check_slug():
+                    return None
+                if not TASK_ID_RE.match(task_id):
+                    return self._fail(400, "id task tidak valid",
+                                      "Contoh yang benar: t_1a2b3c4d")
+                payload = agent_task_payload(slug, task_id)
+                if payload is None:
+                    return self._fail(404, "task tidak ditemukan", task_id)
+                return self._json(200, payload)
+        except ValueError as exc:
+            return self._fail(400, "permintaan tidak valid", str(exc))
+        except Exception as exc:  # noqa: BLE001 - jangan biarkan UI kosong tanpa sebab
+            return self._fail(500, "gagal membaca papan kanban",
+                              "%s: %s" % (type(exc).__name__, exc))
+        return self._fail(404, "not found", path)
+
+    @staticmethod
+    def _board_slug_error(slug: str) -> str:
+        """Pesan kesalahan slug, atau string kosong kalau sah."""
+        if not slug:
+            return "Parameter slug wajib diisi."
+        if not BOARD_SLUG_RE.match(slug):
+            return ("Slug hanya boleh huruf kecil, angka, tanda hubung, dan garis bawah "
+                    "(maksimal 64 karakter, tidak diawali tanda hubung).")
+        return ""
 
     # -- proxy -----------------------------------------------------------
 

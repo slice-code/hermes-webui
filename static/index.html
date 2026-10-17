@@ -46,6 +46,14 @@
   }
   button.model span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   button.model b{color:var(--acc); font-weight:600}
+  /* tautan ke halaman Pemantau Agent — gaya sama dengan tombol header lain */
+  a.btn{
+    font:inherit; font-size:13px; color:var(--fg); background:var(--bg3);
+    border:1px solid var(--line); border-radius:8px; padding:6px 11px; cursor:pointer;
+    text-decoration:none; white-space:nowrap; display:inline-flex; align-items:center; gap:6px;
+  }
+  a.btn:hover{border-color:var(--acc); color:#fff}
+  a.btn .ico{font-size:14px; line-height:1}
 
   main{flex:1; overflow-y:auto; overflow-x:hidden}
   .wrap{max-width:900px; margin:0 auto; padding:20px 16px 8px; display:flex; flex-direction:column; gap:16px}
@@ -240,6 +248,8 @@
     <b id="modelProv">default</b><span id="modelName">memuat…</span>
   </button>
   <span class="spacer"></span>
+  <a class="btn" id="agentLink" href="/agents"
+     title="Pemantau Agent — status task kanban per agent"><span class="ico" aria-hidden="true">🤖</span>Agent</a>
   <button id="auto" title="Jawab permintaan konfirmasi otomatis">⚡ Auto</button>
   <button id="settings" title="Setelan: konfirmasi perintah">⚙</button>
   <button id="history">Riwayat</button>

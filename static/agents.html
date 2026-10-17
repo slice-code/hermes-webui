@@ -24,8 +24,17 @@
   #agent-monitor{display:block}
 
   /* ---------- kepala lengket ---------- */
+  /* Satu kontainer lengket untuk KEDUA baris (.top + .bar). Kalau keduanya
+     masing-masing `position:sticky; top:0`, saat digulir mereka bertumpuk di
+     y=0 dan baris judul (z-index lebih tinggi) menutupi dropdown board +
+     indikator "diperbarui N dtk lalu" — pemilih board jadi tidak bisa dilihat
+     maupun diketuk justru saat daftar task sedang digulir. */
+  .head{
+    position:sticky; top:0; z-index:6; background:var(--bg2);
+    border-bottom:1px solid var(--line);
+  }
   .top{
-    position:sticky; top:0; z-index:6; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
     padding:9px 12px; background:var(--bg2); border-bottom:1px solid var(--line);
   }
   .top h1{font-size:15px; margin:0; font-weight:600; letter-spacing:.01em; white-space:nowrap}
@@ -44,8 +53,8 @@
   .icon.busy{opacity:.5}
 
   .bar{
-    position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
-    padding:8px 12px; background:var(--bg2); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    padding:8px 12px; background:var(--bg2);
   }
   .bar .lb{font-size:11.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em}
   select{
@@ -167,20 +176,22 @@
 </head>
 <body>
 <div id="agent-monitor">
-  <header class="top">
-    <h1>Pemantau Agent</h1>
-    <span class="spacer"></span>
-    <a class="back" href="/" title="Kembali ke halaman chat">← Kembali ke chat</a>
-    <button class="icon" id="refresh" aria-label="Muat ulang sekarang" title="Muat ulang sekarang">⟳</button>
-  </header>
+  <div class="head">
+    <header class="top">
+      <h1>Pemantau Agent</h1>
+      <span class="spacer"></span>
+      <a class="back" href="/" title="Kembali ke halaman chat">← Kembali ke chat</a>
+      <button class="icon" id="refresh" aria-label="Muat ulang sekarang" title="Muat ulang sekarang">⟳</button>
+    </header>
 
-  <div class="bar">
-    <label class="lb" for="boardSel">Board</label>
-    <select id="boardSel" aria-label="Pilih papan kanban"></select>
-    <span class="live" aria-live="polite">
-      <span class="dot" id="dot" aria-hidden="true"></span>
-      <span id="updated">memuat…</span>
-    </span>
+    <div class="bar">
+      <label class="lb" for="boardSel">Board</label>
+      <select id="boardSel" aria-label="Pilih papan kanban"></select>
+      <span class="live" aria-live="polite">
+        <span class="dot" id="dot" aria-hidden="true"></span>
+        <span id="updated">memuat…</span>
+      </span>
+    </div>
   </div>
 
   <div class="chips" id="chips" role="group" aria-label="Ringkasan &amp; filter status"></div>
@@ -305,7 +316,10 @@
   }
 
   async function loadBoard() {
-    if (!state.slug) return;
+    if (!state.slug) {                       // tidak ada board sama sekali: bukan error,
+      state.updatedAt = Math.floor(Date.now() / 1000);   // tapi indikator tetap jujur
+      return;
+    }
     state.busy = true;
     $("refresh").classList.add("busy");
     const res = await fetch("/api/agents/boards", { cache: "no-store" }).catch(() => null);
@@ -334,6 +348,10 @@
     try {
       if (!state.boards.length) await loadBoards();
       await loadBoard();
+      // Urutan penting: baris "memuat" di atas WAJIB hilang begitu satu refresh
+      // berhasil (state.error sudah ""), kalau tidak banner merah bertahan
+      // selamanya sementara data & titik status sudah hijau lagi.
+      paintError();
       paintUpdated();
     } catch (e) {
       state.error = "Gagal memuat data papan: " + (e && e.message ? e.message : String(e));

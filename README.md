@@ -227,7 +227,7 @@ Isi halaman:
 
 | Bagian | Isi |
 |---|---|
-| Header lengket | judul **Pemantau Agent**, pemilih board, tombol muat ulang, tautan kembali ke chat |
+| Header lengket | dua baris yang menempel **bersama-sama** saat halaman digulir: (1) judul **Pemantau Agent**, tombol muat ulang, tautan kembali ke chat; (2) pemilih board + indikator. Keduanya berada dalam satu pembungkus `.head` supaya tidak saling menutupi (dua baris `sticky` terpisah membuat baris judul menutup dropdown board) |
 | Indikator | titik status (hijau/merah) + "diperbarui Ns lalu" |
 | Chip ringkasan | `Berjalan n` · `Siap n` · `Menunggu n` · `Terhenti n` · `Selesai n` (+ chip lain hanya kalau ada isinya). **Ketuk = filter, ketuk lagi = lepas** |
 | Kartu task | badge status berwarna, nama agent, waktu relatif, judul maks 2 baris; untuk task `running` ada titik berdenyut + PID hidup/mati |
@@ -237,7 +237,10 @@ Perilaku data:
 
 - **Auto-refresh 10 detik**, tapi **berhenti saat tab tidak terlihat** (`document.hidden`)
   dan menyegarkan **sekali** begitu tab kembali aktif; kalau fetch gagal, daftar yang
-  sudah tampil tetap ada dan hanya muncul baris peringatan kecil.
+  sudah tampil tetap ada dan hanya muncul baris peringatan kecil. Baris peringatan itu
+  **hilang sendiri** begitu ada satu refresh yang berhasil (manual atau auto): titik status
+  kembali hijau dan label balik ke "diperbarui N dtk lalu" — jadi indikator tidak pernah
+  bilang "gagal" sementara datanya sudah segar.
 - Board `default` tampil walau belum pernah dipakai; board kosong menampilkan empty-state
   ("Belum ada task di board ini").
 

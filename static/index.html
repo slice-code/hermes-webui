@@ -55,6 +55,19 @@
   a.btn:hover{border-color:var(--acc); color:#fff}
   a.btn .ico{font-size:14px; line-height:1}
 
+  /* navigasi halaman: Chat · Papan · Workspace (dipakai di ketiga halaman) */
+  nav.pages{
+    display:flex; align-items:stretch; border:1px solid var(--line); border-radius:8px;
+    overflow:hidden; background:var(--bg3);
+  }
+  nav.pages a{
+    font-size:12.5px; color:var(--dim); text-decoration:none; padding:7px 10px;
+    min-height:34px; display:inline-flex; align-items:center; white-space:nowrap;
+  }
+  nav.pages a + a{border-left:1px solid var(--line)}
+  nav.pages a:hover{color:#fff; background:#202839}
+  nav.pages a[aria-current="page"]{color:#fff; background:#1b2740}
+
   main{flex:1; overflow-y:auto; overflow-x:hidden}
   .wrap{max-width:900px; margin:0 auto; padding:20px 16px 8px; display:flex; flex-direction:column; gap:16px}
 
@@ -248,8 +261,11 @@
     <b id="modelProv">default</b><span id="modelName">memuat…</span>
   </button>
   <span class="spacer"></span>
-  <a class="btn" id="agentLink" href="/agents"
-     title="Pemantau Agent — status task kanban per agent"><span class="ico" aria-hidden="true">🤖</span>Agent</a>
+  <nav class="pages" aria-label="Navigasi halaman">
+    <a href="/" aria-current="page">Chat</a>
+    <a href="/agents" title="Papan kanban Hermes — status task per agent">Papan</a>
+    <a href="/workspace" title="Kantor virtual — siapa yang sedang bekerja">Workspace</a>
+  </nav>
   <button id="auto" title="Jawab permintaan konfirmasi otomatis">⚡ Auto</button>
   <button id="settings" title="Setelan: konfirmasi perintah">⚙</button>
   <button id="history">Riwayat</button>

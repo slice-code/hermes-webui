@@ -293,6 +293,23 @@ AGENT_DETAIL_COMMENTS = 10
 AGENT_DETAIL_EVENTS = 20
 AGENT_DETAIL_RUNS = 5
 
+# --- Workspace (kantor virtual) --------------------------------------------
+# Satu meja per profil; state diturunkan dari kanban.db + /proc, bukan dari
+# laporan agen itu sendiri. Aturannya sengaja kaku supaya bisa diuji:
+#   working — ada task `running` untuk profil itu DAN `worker_pid`-nya hidup.
+#   blocked — ada task `blocked` untuk profil itu (menang atas idle).
+#   done    — task terakhir selesai < AGENT_LIVE_DONE_WINDOW detik lalu (bubble
+#             "selesai" hanya muncul sebentar, setelah itu kembali idle).
+#   idle    — profil terdaftar, tapi tidak memenuhi satu pun di atas.
+#   offline — assignee muncul di papan tapi tidak punya direktori profil.
+AGENT_LIVE_STATES = ("working", "blocked", "done", "idle", "offline")
+AGENT_LIVE_RECENT = 3
+AGENT_LIVE_RECENT_CHARS = 80
+AGENT_LIVE_TITLE_CHARS = 140
+AGENT_LIVE_ROLE_CHARS = 80
+AGENT_LIVE_DONE_WINDOW = 120
+PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+
 
 def _hermes_root() -> Path:
     """Root instalasi Hermes (tempat `kanban.db` board default).
@@ -461,6 +478,280 @@ def _pid_alive(pid) -> bool:
         return bool(pid) and Path("/proc/%d" % int(pid)).is_dir()
     except (TypeError, ValueError):
         return False
+
+
+# --- Workspace: daftar profil + state live ---------------------------------
+
+def _profiles_root() -> Path:
+    return _hermes_root() / "profiles"
+
+
+def _profile_role(path: Path) -> str:
+    """Deskripsi singkat profil dari `profile.yaml` (kunci `description:`).
+
+    Parser mini tanpa PyYAML: ambil baris `description:` beserta baris lanjutan
+    yang menjorok, lalu potong. Kalau tidak ada, role dikosongkan — UI memakai
+    nama profil sebagai judul meja.
+    """
+    try:
+        lines = (path / "profile.yaml").read_text(encoding="utf-8-sig").splitlines()
+    except OSError:
+        return ""
+    for index, line in enumerate(lines):
+        if not line.startswith("description:"):
+            continue
+        parts = [line.split(":", 1)[1].strip()]
+        for cont in lines[index + 1:]:
+            if not cont[:1].isspace():
+                break                     # kunci baru
+            parts.append(cont.strip())
+        return " ".join(p for p in parts if p)[:AGENT_LIVE_ROLE_CHARS]
+    return ""
+
+
+def list_profiles() -> list:
+    """Profil Hermes yang punya meja di kantor: `default` + `<root>/profiles/*`.
+
+    Direktori non-profil (cache, backups, home, …) dilewati: penandanya harus ada
+    `config.yaml` atau `profile.yaml`.
+    """
+    out = [{"profile": "default", "role": "", "home": True}]
+    root = _profiles_root()
+    if not root.is_dir():
+        return out
+    for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+        if not child.is_dir() or not PROFILE_NAME_RE.match(child.name):
+            continue
+        if not (child / "config.yaml").is_file() and not (child / "profile.yaml").is_file():
+            continue
+        out.append({"profile": child.name, "role": _profile_role(child), "home": True})
+    return out
+
+
+def _live_task_fields(row) -> dict:
+    """Kolom task yang dibutuhkan kantor virtual (tanpa body — isi task tidak
+    pernah dikirim ke browser)."""
+    return {
+        "id": str(row["id"]),
+        "title": str(row["title"] or ""),
+        "status": str(row["status"]),
+        "worker_pid": row["worker_pid"],
+        "started_at": row["started_at"],
+        "completed_at": row["completed_at"],
+        "created_at": row["created_at"],
+        "block_kind": row["block_kind"],
+        "last_heartbeat_at": row["last_heartbeat_at"],
+    }
+
+
+def _live_when(task: dict | None, *keys) -> int | None:
+    """Timestamp pertama yang terisi dari `keys` — `None` kalau tidak ada."""
+    if not task:
+        return None
+    for key in keys:
+        value = task.get(key)
+        if not value:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _live_recent(conn, ids: list) -> dict:
+    """`{task_id: ["komentar/event terakhir", …]}` maksimal AGENT_LIVE_RECENT
+    entri per task, tiap entri dipotong AGENT_LIVE_RECENT_CHARS karakter.
+
+    Komentar dan event non-heartbeat didahulukan (itu isi aktivitas sebenarnya);
+    `heartbeat` hanya dipakai untuk mengisi sisa slot, supaya "aktivitas terakhir"
+    tidak penuh dengan denyut liveness.
+    """
+    out: dict = {}
+    if not ids:
+        return out
+    where = _placeholder(ids)
+    rows = conn.execute(
+        "SELECT task_id, created_at, 'comment' AS kind, COALESCE(author, '') AS who, "
+        "COALESCE(body, '') AS text FROM task_comments WHERE task_id IN " + where +
+        " UNION ALL "
+        "SELECT task_id, created_at, 'event' AS kind, '' AS who, COALESCE(kind, '') AS text "
+        "FROM task_events WHERE task_id IN " + where +
+        " ORDER BY created_at DESC LIMIT 400",
+        list(ids) + list(ids)).fetchall()
+    main: dict = {}
+    beats: dict = {}
+    for r in rows:
+        tid = str(r["task_id"])
+        text = " ".join(str(r["text"] or "").split())
+        is_event = str(r["kind"]) == "event"
+        if is_event:
+            text = "event: " + text
+            bucket = beats.setdefault(tid, [])
+        else:
+            if r["who"]:
+                text = str(r["who"]) + ": " + text
+            bucket = main.setdefault(tid, [])
+        text = text[:AGENT_LIVE_RECENT_CHARS].strip()
+        if text and text != "event:":
+            bucket.append(text)
+    for tid in set(list(main) + list(beats)):
+        items = main.get(tid, [])[:AGENT_LIVE_RECENT]
+        if len(items) < AGENT_LIVE_RECENT:
+            items += beats.get(tid, [])[:AGENT_LIVE_RECENT - len(items)]
+        out[tid] = items
+    return out
+
+
+def _live_last_event(conn, ids: list) -> dict:
+    """Event terakhir per task (`kind` + waktu) untuk bubble/notifikasi."""
+    out: dict = {}
+    if not ids:
+        return out
+    rows = conn.execute(
+        "SELECT task_id, kind, created_at FROM task_events WHERE id IN "
+        "(SELECT MAX(id) FROM task_events WHERE task_id IN %s GROUP BY task_id)"
+        % _placeholder(ids), list(ids))
+    for r in rows:
+        out[str(r["task_id"])] = {"kind": str(r["kind"] or ""), "at": r["created_at"]}
+    return out
+
+
+def _live_facts(conn) -> dict:
+    """Satu query pass: task terbaru per (assignee, status) + hitungan `running`.
+
+    Daftar tanpa body supaya murah dipanggil tiap 3 detik oleh /api/agents/live.
+    """
+    rows = conn.execute(
+        "SELECT id, title, assignee, status, worker_pid, started_at, completed_at, "
+        "created_at, block_kind, last_heartbeat_at FROM tasks "
+        "WHERE status IN ('running', 'blocked', 'done') AND assignee IS NOT NULL "
+        "AND assignee <> '' "
+        "ORDER BY COALESCE(started_at, created_at) DESC, id DESC").fetchall()
+    latest: dict = {}
+    picked: list = []
+    running_total = 0
+    running_alive = 0
+    running_by: dict = {}
+    for row in rows:
+        who = str(row["assignee"])
+        status = str(row["status"])
+        slot = latest.setdefault(who, {})
+        if status not in slot:                # order by aktivitas: yang pertama = terbaru
+            slot[status] = _live_task_fields(row)
+            picked.append(str(row["id"]))
+        if status == "running":
+            running_total += 1
+            running_by[who] = running_by.get(who, 0) + 1
+            if _pid_alive(row["worker_pid"]):
+                running_alive += 1
+    return {"latest": latest, "picked": picked, "running_total": running_total,
+            "running_alive": running_alive, "running_by": running_by}
+
+
+def _live_agent(profile: dict, slot: dict, recent: dict, events: dict, now: int) -> dict:
+    """Turunkan state satu agen dari fakta papan (lihat komentar AGENT_LIVE_STATES)."""
+    who = profile["profile"]
+    running, blocked, done = slot.get("running"), slot.get("blocked"), slot.get("done")
+    pid = running["worker_pid"] if running else None
+    alive = _pid_alive(pid)
+    task = None
+    state = "idle"
+    since = None
+    if running is not None and alive:
+        state, task = "working", running
+        since = _live_when(running, "started_at", "created_at")
+    elif blocked is not None:
+        state, task = "blocked", blocked
+        event = events.get(blocked["id"]) or {}
+        kind = str(event.get("kind") or "")
+        since = int(event["at"]) if "block" in kind and event.get("at") else \
+            _live_when(blocked, "started_at", "created_at")
+    elif done is not None and _live_when(done, "completed_at") and \
+            now - int(done["completed_at"]) <= AGENT_LIVE_DONE_WINDOW:
+        state, task = "done", done
+        since = _live_when(done, "completed_at")
+    elif not profile.get("home", True):
+        state, task = "offline", None
+    else:
+        # idle: "sejak" = aktivitas terakhir yang kita ketahui dari task terakhir
+        # (heartbeat terakhir kalau worker-nya sudah mati, completed_at kalau selesai).
+        task = running or blocked or done
+        since = _live_when(task, "completed_at", "last_heartbeat_at", "started_at", "created_at")
+    if task is None:
+        task_pid = pid
+    else:
+        task_pid = task["worker_pid"] or pid
+    return {
+        "profile": who,
+        "role": profile.get("role") or "",
+        "state": state,
+        "task_id": task["id"] if task else None,
+        "task_title": (task["title"] if task else "")[:AGENT_LIVE_TITLE_CHARS],
+        "task_status": task["status"] if task else None,
+        "since": since,
+        "worker_pid": task_pid,
+        "worker_alive": bool(alive),
+        "last_event": events.get(task["id"]) if task else None,
+        "recent": recent.get(task["id"], []) if task else [],
+        "block_kind": (task.get("block_kind") if task else None),
+    }
+
+
+def agent_live_payload(slug: str) -> dict:
+    """Payload `GET /api/agents/live` — kantor virtual (state per profil).
+
+    `counts.working` sengaja dihitung per TASK: jumlah task `running` yang
+    `worker_pid`-nya benar-benar hidup (itulah yang bisa dibandingkan langsung
+    dengan `hermes kanban --board <slug> list`). `counts.working_agents` =
+    jumlah meja yang berstatus bekerja — beda hanya kalau satu profil memegang
+    dua task `running` sekaligus.
+    """
+    info = _board_meta(slug)
+    info.pop("archived", None)
+    info["current"] = bool(slug == _current_board())
+    now = int(time.time())
+    profiles = list_profiles()
+    known = {p["profile"] for p in profiles}
+    facts = {"latest": {}, "picked": [], "running_total": 0, "running_alive": 0, "running_by": {}}
+    recent: dict = {}
+    events: dict = {}
+
+    db = _board_db_path(slug)
+    has_db = db.is_file()
+    if has_db:
+        facts = _board_query(db, _live_facts)
+        picked = facts["picked"]
+        if picked:
+            def activity(conn):
+                return _live_recent(conn, picked), _live_last_event(conn, picked)
+            recent, events = _board_query(db, activity)
+
+    # Assignee yang muncul di papan tapi tidak punya direktori profil → kursi
+    # kosong ("offline"), bukan disembunyikan.
+    for who in sorted(facts["latest"]):
+        if who not in known:
+            profiles.append({"profile": who, "role": "", "home": False})
+
+    agents = []
+    counts = {key: 0 for key in AGENT_LIVE_STATES}
+    for profile in sorted(profiles, key=lambda p: p["profile"].lower()):
+        agent = _live_agent(profile, facts["latest"].get(profile["profile"], {}),
+                            recent, events, now)
+        agent["tasks_running"] = int(facts["running_by"].get(profile["profile"], 0))
+        counts[agent["state"]] = counts.get(agent["state"], 0) + 1
+        agents.append(agent)
+    counts["working_agents"] = counts.get("working", 0)
+    counts["working"] = int(facts["running_alive"])      # per task, sebanding CLI
+    counts["running_tasks"] = int(facts["running_total"])
+    counts["agents"] = len(agents)
+    return {
+        "board": info,
+        "generated_at": now,
+        "agents": agents,
+        "counts": counts,
+        "has_db": has_db,
+    }
 
 
 def _agent_tasks(conn, limit: int) -> list:
@@ -810,7 +1101,13 @@ class Handler(BaseHTTPRequestHandler):
             if not self._same_origin():
                 return self._fail(403, "cross-origin ditolak")
             return self._serve_static("agents.html")
-        if path in ("/api/agents/boards", "/api/agents/board", "/api/agents/task"):
+        # Workspace — kantor virtual realtime; datanya dari /api/agents/live.
+        if path in ("/workspace", "/workspace/"):
+            if not self._same_origin():
+                return self._fail(403, "cross-origin ditolak")
+            return self._serve_static("workspace.html")
+        if path in ("/api/agents/boards", "/api/agents/board", "/api/agents/task",
+                    "/api/agents/live"):
             if not self._same_origin():
                 return self._fail(403, "cross-origin ditolak")
             return self._api_agents(path)
@@ -1012,6 +1309,13 @@ class Handler(BaseHTTPRequestHandler):
                 if payload is None:
                     return self._fail(404, "task tidak ditemukan", task_id)
                 return self._json(200, payload)
+
+            if path == "/api/agents/live":
+                # Kantor virtual: state tiap profil untuk satu board. Aman
+                # di-polling tiap 3 detik — hanya kolom ringkas, tanpa body task.
+                if not check_slug():
+                    return None
+                return self._json(200, agent_live_payload(slug))
         except ValueError as exc:
             return self._fail(400, "permintaan tidak valid", str(exc))
         except Exception as exc:  # noqa: BLE001 - jangan biarkan UI kosong tanpa sebab

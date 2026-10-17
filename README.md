@@ -12,8 +12,8 @@ sungguhan yang bicara ke **API server Hermes** yang OpenAI-compatible.
 - Tombol **Chat baru** mengosongkan percakapan; riwayat disimpan di localStorage browser
 - Tombol **Riwayat** membuka daftar sesi (semua sumber); **Lanjutkan chat** di banner
   menjadikan sesi terpilih sebagai percakapan aktif — pesan baru masuk ke sesi yang sama
-- Tombol **🤖 Agent** di header membuka **halaman Pemantau Agent** (`/agents`) — lihat bagian
-  **Pemantau Agent** di bawah
+- Navigasi **Chat · Papan · Workspace** di header semua halaman: **Chat** = `/` (halaman ini),
+  **Papan** = `/agents` (pemantau agent), **Workspace** = `/workspace` (kantor virtual realtime)
 - Tombol **Keluar** (kanan header) mengakhiri sesi; tombol di sebelahnya menampilkan user aktif
 - Tombol **⚡ Auto** adalah saklar cepat tanpa konfirmasi; **⚙ Setelan** membuka pilihan lengkap (lihat **Auto approve**)
 
@@ -75,13 +75,15 @@ curl -s -c jar -X POST http://127.0.0.1:8650/login \
 curl -s -b jar -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8650/   # 200
 ```
 
-Pemantau Agent (cookie yang sama):
+Pemantau Agent + Workspace (cookie yang sama):
 
 ```bash
 curl -s -b jar http://127.0.0.1:8650/agents | grep -c 'id="agent-monitor"'   # 1
 curl -s -b jar http://127.0.0.1:8650/api/agents/boards                       # daftar board
 curl -s -b jar 'http://127.0.0.1:8650/api/agents/board?slug=pjtki'           # counts + tasks
 curl -s -b jar 'http://127.0.0.1:8650/api/agents/board?slug=../../etc'       # 400 (ditolak)
+curl -s -b jar http://127.0.0.1:8650/workspace | grep -c 'id="workspace-room"'  # 1
+curl -s -b jar 'http://127.0.0.1:8650/api/agents/live?slug=pjtki'            # kantor virtual (JSON)
 ```
 
 ### Menampilkan laporan: tabel, kode, dan pohon
@@ -283,6 +285,108 @@ Detail teknis & keamanan:
 - `worker_alive` = status `running` **dan** `/proc/<pid>` ada. Tidak ada dependensi baru
   (stdlib Python + JS bawaan browser, tanpa CDN).
 
+## Workspace (`/workspace`) — kantor virtual realtime
+
+Halaman ketiga: **kantor** berisi satu meja per profil agent. Kelihatan sekilas siapa
+yang **sedang bekerja**, siapa yang **menganggur**, siapa yang **terhenti** (butuh
+keputusan), dan siapa yang **baru saja selesai**. Mobile-first, sprite SVG + animasi CSS
+(satu file, tanpa dependency/CDN/gambar eksternal).
+
+Dibuka lewat navigasi **Workspace** di header (dari `/` atau `/agents`). Cookie sesi yang
+sama; tanpa sesi dialihkan ke `/login`.
+
+### Arti warna & state
+
+| State | Warna | Di ruangan | Sumbernya (bukan laporan agent, tapi fakta) |
+|---|---|---|---|
+| **working** | hijau | duduk di meja, animasi mengetik dua frame, layar monitor menyala, gelembung = **judul task** (1 baris, dipotong `…`) | ada task `running` dengan `assignee = profil` **dan** `/proc/<worker_pid>` ada |
+| **blocked** | merah | tetap di mejanya, gelembung **"butuh keputusan"** | ada task `blocked` untuk profil itu (menang atas `idle`) |
+| **done** | abu | di mejanya, gelembung **"selesai"** | task terakhirnya `completed_at` < **120 detik** lalu; setelah itu kembali `idle` |
+| **idle** | biru | berdiri/mengembara di **sudut kopi** (nama profil tertulis di bawah karakternya), gelembung **"nganggur"** | profil terdaftar, tapi tidak memenuhi salah satu di atas |
+| **offline** | abu gelap | kursi kosong (tanpa karakter), label status di bawah meja | assignee muncul di papan tapi tidak punya direktori profil |
+
+Aturan yang penting: **PID mati bukan "bekerja"**. Kalau papan masih menulis `running`
+tetapi proses `worker_pid` sudah tidak ada di `/proc`, agen itu ditampilkan **idle** —
+ruangan ini tidak berbohong demi menyenangkan angka papan.
+
+Isi lain di ruangan: papan tulis (nama board + `N agen kerja · M nganggur` + `X terhenti ·
+Y selesai · Z jalan`), jendela malam, **jam dinding yang menunjukkan waktu server** (UTC
+di mesin ini), meja kopi + tanaman, dan pintu di kanan bawah. Nilai `Z jalan` = jumlah
+**task** berstatus `running` di board itu (hover teksnya untuk penjelasan), sedangkan
+angka lain = jumlah **agen/meja** — bedanya muncul saat satu profil memegang dua task
+`running` sekaligus.
+
+### Interaksi
+
+- **Ketuk/klik meja atau karakter** → panel bawah (bottom sheet): profil, role (dari
+  `profile.yaml`), state + "sejak kapan", task + **ID**, jumlah task jalan, **PID** +
+  hidup/tidak, event terakhir, **3 aktivitas terakhir** (komentar/event, ≤80 karakter),
+  dan tombol **Lihat di Papan →** yang membuka `/agents?slug=<board>`. Tutup lewat ✕,
+  ketuk latar, atau `Esc`.
+- **Pemilih board** di atas ruangan (sama seperti halaman Papan); pilihannya diingat di
+  localStorage (`hermes-workspace-v1`).
+- **Roster** di bawah ruangan (bisa dilipat): daftar agen, state, dan judul task-nya.
+  Ini juga yang membuat halaman tetap berguna kalau animasi dimatikan.
+- **Live**: polling `/api/agents/live` tiap **3 detik**; berhenti saat tab tidak aktif
+  (`document.hidden`) dan menyegarkan sekali begitu tab kembali. Indikator "live ·
+  diperbarui N dtk lalu" berdenyut hijau; kalau fetch gagal statusnya "terputus" dan
+  ruangan **tidak dikosongkan** (data terakhir tetap tampil).
+- **Lebar meja**: 2 kolom di layar sempit, 3 kolom mulai 560 px; ruangan menskala penuh
+  (SVG `viewBox`), jadi **tidak ada scroll horizontal** dari 320 px sampai desktop.
+- **`prefers-reduced-motion: reduce`** → semua animasi karakter/denyut dimatikan; state
+  tetap jelas lewat warna + label teks di bawah meja + gelembung status.
+
+### Cara menambah agen
+
+Tidak ada konfigurasi khusus: **satu meja = satu profil Hermes**.
+
+1. Buat profil seperti biasa, mis. `hermes profile create pjtki-qa`. Meja baru muncul di
+   poll berikutnya (≤3 detik) tanpa reload.
+2. Direktori `~/.hermes/profiles/<nama>/` dianggap profil kalau berisi `config.yaml`
+   atau `profile.yaml`; direktori non-profil (cache, backups, home) dilewati. Profil
+   `default` selalu punya meja.
+3. Teks **role** di panel detail diambil dari `description:` pada
+   `~/.hermes/profiles/<nama>/profile.yaml` (kalau ada). Nama profil selalu jadi label meja.
+4. Agent muncul di meja itu begitu ada task di board terpilih yang `assignee`-nya sama
+   dengan nama profil — tidak perlu hal lain: keadaannya dibaca dari kanban.db + `/proc`.
+
+### Endpoint `GET /api/agents/live?slug=<slug>`
+
+Lokal (bukan proxy), read-only, wajib sesi + same-origin — sama seperti `/api/agents/board`.
+
+```json
+{
+  "board": {"slug": "pjtki", "name": "PJTKI Dev", "current": true},
+  "generated_at": 1792206305,
+  "agents": [{"profile": "pjtki-qa", "role": "Worker QA PJTKI …", "state": "working",
+              "task_id": "t_06a74dc0", "task_title": "QA-Q5 Report …", "task_status": "running",
+              "since": 1792205658, "worker_pid": 473224, "worker_alive": true,
+              "last_event": {"kind": "heartbeat", "at": 1792206298},
+              "recent": ["pjtki-qa: menjalankan pm2 restart …"], "tasks_running": 2}],
+  "counts": {"working": 2, "blocked": 0, "done": 0, "idle": 4, "offline": 0,
+             "working_agents": 1, "running_tasks": 2, "agents": 5},
+  "has_db": true
+}
+```
+
+- `counts.working` = jumlah **task** `running` yang `worker_pid`-nya benar-benar hidup →
+  angka ini bisa dibandingkan langsung dengan `hermes kanban --board <slug> list`.
+  `counts.working_agents` = jumlah **meja** berstatus bekerja (beda hanya saat satu profil
+  memegang dua task `running` sekaligus); `idle`/`blocked`/`done`/`offline` dihitung per agen.
+- `recent` = maksimal 3 komentar/event terakhir task itu (≤80 karakter; `heartbeat` hanya
+  dipakai mengisi sisa slot supaya daftar tidak penuh denyut liveness).
+- **Isi `body` task tidak pernah dikirim** ke halaman ini — hanya judul (≤140 karakter),
+  ID, status, PID, dan waktu.
+- Slug divalidasi regex yang sama seperti endpoint lain (tidak sah → **400**, board tidak
+  dikenal → **404**, tanpa sesi → **401**/302, cross-origin → **403**).
+
+Catatan operasional: `/workspace` dan `/api/agents/live` hidup di `server.py`, jadi setelah
+perubahan `server.py` service perlu di-restart (`systemctl restart hermes-webchat`) —
+koneksi browser yang sedang terbuka terputus sesaat (gateway tetap hidup, riwayat aman).
+Perubahan `static/*.html` **tidak** butuh restart. Restart dijalankan **dari shell biasa
+(SSH)**: guard terminal agent menolak perintah stop/restart service saat tidak ada user
+yang bisa menyetujui permintaan itu.
+
 ## File
 
 | File | Isi |
@@ -290,6 +394,7 @@ Detail teknis & keamanan:
 | `server.py` | Server + reverse proxy + login (stdlib Python saja, tanpa dependensi) + endpoint `/api/agents/*` |
 | `static/index.html` | Seluruh UI chat (HTML + CSS + JS, tanpa CDN) |
 | `static/agents.html` | Halaman **Pemantau Agent** (`/agents`) — papan kanban, mobile-first |
+| `static/workspace.html` | Halaman **Workspace** (`/workspace`) — kantor virtual realtime (sprite SVG + animasi CSS) |
 | `static/login.html` | Halaman login |
 | `auth.json` | Username + hash PBKDF2 + signing secret (mode `600`, jangan di-commit) |
 | `~/.config/systemd/user/hermes-webchat.service` | Unit systemd user (enabled, linger aktif) |
@@ -310,9 +415,10 @@ tidak ada kredensial di localStorage — berbeda dengan menembak 8642 langsung d
 Percakapan memakai header `X-Hermes-Session-Id`, jadi sesi, transcript, dan memory
 Hermes berlanjut antar pesan, bukan mulai dari nol setiap kali.
 
-Halaman **Pemantau Agent** (`/agents`) tidak lewat gateway sama sekali: `server.py`
-membaca file SQLite kanban Hermes langsung (read-only). Jadi halaman itu tetap bisa
-dibuka walau API server sedang mati — yang tidak jalan hanya halaman chat-nya.
+Halaman **Pemantau Agent** (`/agents`) dan **Workspace** (`/workspace`) tidak lewat gateway
+sama sekali: `server.py` membaca file SQLite kanban Hermes langsung (read-only) dan
+memeriksa `/proc/<pid>` untuk liveness. Jadi keduanya tetap bisa dibuka walau API server
+sedang mati — yang tidak jalan hanya halaman chat-nya.
 
 ## Prasyarat yang wajib
 

@@ -45,6 +45,18 @@
     display:inline-flex; align-items:center;
   }
   .back:hover{border-color:var(--acc); color:#fff}
+  /* navigasi halaman: Chat · Papan · Workspace (sama seperti index.html) */
+  nav.pages{
+    display:flex; align-items:stretch; border:1px solid var(--line); border-radius:8px;
+    overflow:hidden; background:var(--bg3);
+  }
+  nav.pages a{
+    font-size:12.5px; color:var(--dim); text-decoration:none; padding:7px 10px;
+    min-height:34px; display:inline-flex; align-items:center; white-space:nowrap;
+  }
+  nav.pages a + a{border-left:1px solid var(--line)}
+  nav.pages a:hover{color:#fff; background:#202839}
+  nav.pages a[aria-current="page"]{color:#fff; background:#1b2740}
   .icon{
     font:inherit; font-size:15px; line-height:1; color:var(--fg); background:var(--bg3);
     border:1px solid var(--line); border-radius:8px; width:38px; height:38px; cursor:pointer;
@@ -180,7 +192,11 @@
     <header class="top">
       <h1>Pemantau Agent</h1>
       <span class="spacer"></span>
-      <a class="back" href="/" title="Kembali ke halaman chat">← Kembali ke chat</a>
+      <nav class="pages" aria-label="Navigasi halaman">
+        <a href="/">Chat</a>
+        <a href="/agents" aria-current="page">Papan</a>
+        <a href="/workspace">Workspace</a>
+      </nav>
       <button class="icon" id="refresh" aria-label="Muat ulang sekarang" title="Muat ulang sekarang">⟳</button>
     </header>
 
@@ -302,7 +318,11 @@
     }
     state.boards = data;
     const saved = readSaved();
-    const usable = state.boards.filter((b) => b.slug === saved);
+    // `?slug=` (mis. dari tombol "Lihat di Papan" di halaman Workspace) menang
+    // atas pilihan tersimpan — additive, tanpa mengubah perilaku lama.
+    let wanted = "";
+    try { wanted = String(new URLSearchParams(location.search).get("slug") || ""); } catch {}
+    const usable = state.boards.filter((b) => b.slug === (wanted || saved));
     const running = state.boards.filter((b) => b.running_count > 0);
     const pick = usable[0] || state.boards.find((b) => b.current) || running[0] ||
                  state.boards.find((b) => b.task_count > 0) || state.boards[0];

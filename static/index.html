@@ -387,6 +387,7 @@
   let RUN_ID = null;          // run yang sedang berjalan (untuk stop & jawab approval)
   let pendingImages = [];     // {path,url,name,bytes} sebelum kirim
   let uploadsRunning = 0;
+  let limitRejected = 0;
   const MAX_IMAGES_PER_MSG = 4;
   const attachBtn = $("attach"), fileInput = $("fileInput"), chipsEl = $("chips");
   const IMAGE_MARKER_RE = /\[Image attached at: ([^\]\n]+)\]/g;
@@ -1010,7 +1011,8 @@
 
   async function uploadImageFile(file) {
     if (input.disabled) return;
-    if (pendingImages.length >= MAX_IMAGES_PER_MSG) {
+    if (pendingImages.length + uploadsRunning >= MAX_IMAGES_PER_MSG) {
+      limitRejected += 1;
       statusEl.textContent = "maksimal 4 gambar per pesan";
       return;
     }
@@ -1036,12 +1038,21 @@
     } finally {
       uploadsRunning -= 1;
       syncSendDisabled();
+      if (uploadsRunning === 0 && limitRejected > 0) {
+        statusEl.textContent = "maksimal 4 gambar per pesan";
+        limitRejected = 0;
+      }
     }
   }
 
   function uploadFiles(fileList) {
+    limitRejected = 0;
     const files = [...fileList].filter((f) => f && f.type && f.type.startsWith("image/"));
     for (const f of files) uploadImageFile(f);
+  }
+
+  function stripShotMarker(t) {
+    return t.replace(/^\[screenshot\]\s*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
   }
 
   function parseUserContent(raw) {
@@ -1272,7 +1283,7 @@
       const msgs = [];
       for (const m of j.data || []) {
         if (m.role === "system") continue;
-        if (m.role === "tool") { msgs.push({ role: "tool", tool: m.tool_name || "tool", text: textOf(m.content) }); continue; }
+        if (m.role === "tool") { msgs.push({ role: "tool", tool: m.tool_name || "tool", text: stripShotMarker(textOf(m.content)) }); continue; }
         if (m.role === "user") {
           const parsed = parseUserContent(textOf(m.content));
           msgs.push({ role: "user", text: parsed.text, images: parsed.images });
@@ -1283,7 +1294,7 @@
           detail: String(tc.function?.arguments || tc.arguments || "").slice(0, 160),
           done: true,
         }));
-        const t = textOf(m.content);
+        const t = stripShotMarker(textOf(m.content));
         const think = m.reasoning_content || m.reasoning || "";
         if (t || tools.length || think) msgs.push({ role: "assistant", text: t, thinking: think, tools });
       }

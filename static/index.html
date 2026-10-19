@@ -351,6 +351,17 @@
   let APPROVAL = "auto";      // "auto" = jalan tanpa konfirmasi, "ask" = tampilkan kartu
   let AUTO_SCOPE = "session"; // scope jawaban otomatis: session | once | always
 
+  // Model yang sudah terbukti TIDAK BISA DIPAKAI (hasil probe langsung ke provider).
+  // Disembunyikan dari pemilih supaya tidak terpilih lalu gagal dengan galat provider.
+  const HIDDEN_MODELS = new Set([
+    // Gemini — sudah tidak tersedia untuk akun baru (HTTP 404 NOT_FOUND)
+    "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-pro-preview",
+    // Gemini — kena kuota/billing di kunci ini (RESOURCE_EXHAUSTED), bukan mati permanen
+    "gemini-4-argon", "gemini-3.1-pro-preview",
+    // OpenCode Go — "Model does not support this protocol"
+    "gemini-4-argon-contributor",
+  ]);
+
   const CHOICE_LABEL = {
     once: "Terima sekali",
     session: "Terima untuk sesi ini",
@@ -1127,6 +1138,7 @@
     const rows = [];
     for (const p of options.providers || []) {
       for (const mid of p.models || []) {
+        if (HIDDEN_MODELS.has(mid)) continue;            // model mati: jangan ditampilkan
         if (needle && !(p.slug + " " + p.name + " " + mid).toLowerCase().includes(needle)) continue;
         rows.push({ prov: p.slug, name: p.name, authed: !!p.authenticated, mid });
       }
@@ -1161,6 +1173,23 @@
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "gagal");
       options = j;
+      // Pilihan tersimpan (localStorage) bisa menunjuk model yang sudah mati — mis. gemini-2.5-flash.
+      // Tanpa ini, setiap kirim pesan gagal 404 NOT_FOUND dari provider.
+      if (HIDDEN_MODELS.has(MODEL)) {
+        // Utamakan model default server (kini DeepSeek via OpenCode Go); Gemini hanya cadangan.
+        let sehat = "", prov = "";
+        if (j.model && !HIDDEN_MODELS.has(j.model)) { sehat = j.model; prov = j.provider || ""; }
+        if (!sehat) {
+          for (const p of j.providers || []) {
+            const m = (p.models || []).find((x) => !HIDDEN_MODELS.has(x));
+            if (m) { sehat = m; prov = p.slug; break; }
+          }
+        }
+        if (sehat) {
+          MODEL = sehat; PROVIDER = prov; save();
+          statusEl.textContent = "model diganti otomatis: " + prov + " · " + sehat;
+        }
+      }
       if (!MODEL) { MODEL = j.model || "hermes-agent"; PROVIDER = j.provider || ""; save(); }
       paintModel();
       renderModelList($("modelSearch").value);

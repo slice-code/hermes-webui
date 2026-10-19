@@ -251,6 +251,40 @@
   }
   .banner #bannerText{min-width:0; overflow-wrap:anywhere}
   .banner button{flex:none}
+
+  /* lampiran gambar */
+  .chips{
+    max-width:900px; margin:0 auto 8px; display:flex; flex-wrap:wrap; gap:8px;
+    max-width:min(900px,100%);
+  }
+  .chip{
+    display:flex; align-items:center; gap:8px; max-width:100%; min-width:0;
+    padding:5px 8px 5px 5px; background:var(--bg3); border:1px solid var(--line);
+    border-radius:var(--radius); font-size:12px;
+  }
+  .chip img{
+    width:44px; height:44px; object-fit:cover; border-radius:6px; flex:none;
+    background:#0c0f14;
+  }
+  .chip .nm{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:12rem}
+  .chip .sz{color:var(--dim); flex:none; font:11px ui-monospace,monospace}
+  .chip button.rm{
+    flex:none; padding:2px 7px; font-size:14px; line-height:1; background:transparent;
+    border:1px solid var(--line); border-radius:6px; color:var(--dim);
+  }
+  .chip button.rm:hover{border-color:var(--err); color:var(--err)}
+  .chatimg{
+    max-width:min(320px,100%); border-radius:9px; border:1px solid var(--line);
+    display:block; margin:0;
+  }
+  .msgimgs{display:flex; flex-wrap:wrap; gap:8px; margin:.45em 0 0; min-width:0; max-width:100%}
+  .imgchip{
+    display:inline-block; font-size:12px; color:var(--dim); background:var(--bg3);
+    border:1px solid var(--line); border-radius:7px; padding:4px 8px; margin:.35em .35em 0 0;
+    max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  main.dragover{outline:2px dashed var(--acc); outline-offset:-4px}
+  button.attach{font-size:16px; padding:8px 11px; flex:none; line-height:1}
 </style>
 </head>
 <body>
@@ -292,7 +326,10 @@
 </main>
 
 <footer>
+  <div class="chips" id="chips" hidden></div>
   <div class="composer">
+    <input type="file" id="fileInput" accept="image/*" multiple hidden>
+    <button type="button" class="attach" id="attach" title="Lampirkan gambar">📎</button>
     <textarea id="input" rows="1" placeholder="Tulis pesan…"></textarea>
     <button class="primary" id="send">Kirim</button>
     <button class="danger" id="stop" hidden>Stop</button>
@@ -348,6 +385,11 @@
   let MODEL = "", PROVIDER = "";
   let options = null;         // /api/model/options
   let RUN_ID = null;          // run yang sedang berjalan (untuk stop & jawab approval)
+  let pendingImages = [];     // {path,url,name,bytes} sebelum kirim
+  let uploadsRunning = 0;
+  const MAX_IMAGES_PER_MSG = 4;
+  const attachBtn = $("attach"), fileInput = $("fileInput"), chipsEl = $("chips");
+  const IMAGE_MARKER_RE = /\[Image attached at: ([^\]\n]+)\]/g;
   let APPROVAL = "auto";      // "auto" = jalan tanpa konfirmasi, "ask" = tampilkan kartu
   let AUTO_SCOPE = "session"; // scope jawaban otomatis: session | once | always
 
@@ -663,7 +705,29 @@
       t.className = "text" + (streaming ? " cursor" : "");
       t.innerHTML = md(m.text);
       bubble.appendChild(t);
-    } else if (streaming && !(m.tools && m.tools.length)) {
+    }
+    if (m.images && m.images.length) {
+      const box = document.createElement("div");
+      box.className = "msgimgs";
+      for (const im of m.images) {
+        if (im.url) {
+          const img = document.createElement("img");
+          img.className = "chatimg";
+          img.loading = "lazy";
+          img.src = im.url;
+          img.alt = im.name || "gambar";
+          box.appendChild(img);
+        } else {
+          const chip = document.createElement("span");
+          chip.className = "imgchip";
+          chip.textContent = "📎 " + (im.name || "gambar");
+          box.appendChild(chip);
+        }
+      }
+      bubble.appendChild(box);
+    }
+    if (!m.text && !m.error && !isTool && !(m.images && m.images.length)
+        && streaming && !(m.tools && m.tools.length)) {
       const t = document.createElement("div");
       t.className = "text cursor";
       bubble.appendChild(t);
@@ -897,14 +961,156 @@
     }
   }
 
+  // ---------------- lampiran gambar ----------------
+  function humanSize(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function syncSendDisabled() {
+    if (controller || history || uploadsRunning > 0) sendBtn.disabled = true;
+    else sendBtn.disabled = false;
+  }
+
+  function renderChips() {
+    chipsEl.innerHTML = "";
+    if (!pendingImages.length) {
+      chipsEl.hidden = true;
+      syncSendDisabled();
+      return;
+    }
+    chipsEl.hidden = false;
+    for (const im of pendingImages) {
+      const chip = document.createElement("div");
+      chip.className = "chip";
+      const thumb = document.createElement("img");
+      thumb.src = im.url;
+      thumb.alt = "";
+      const nm = document.createElement("span");
+      nm.className = "nm";
+      nm.textContent = im.name || "gambar";
+      const sz = document.createElement("span");
+      sz.className = "sz";
+      sz.textContent = humanSize(im.bytes || 0);
+      const rm = document.createElement("button");
+      rm.type = "button";
+      rm.className = "rm";
+      rm.textContent = "×";
+      rm.title = "Hapus";
+      rm.onclick = () => {
+        pendingImages = pendingImages.filter((x) => x.path !== im.path);
+        renderChips();
+      };
+      chip.append(thumb, nm, sz, rm);
+      chipsEl.appendChild(chip);
+    }
+    syncSendDisabled();
+  }
+
+  async function uploadImageFile(file) {
+    if (input.disabled) return;
+    if (pendingImages.length >= MAX_IMAGES_PER_MSG) {
+      statusEl.textContent = "maksimal 4 gambar per pesan";
+      return;
+    }
+    uploadsRunning += 1;
+    syncSendDisabled();
+    statusEl.textContent = "mengunggah gambar…";
+    try {
+      const fd = new FormData();
+      fd.append("file", file, file.name || "gambar");
+      const r = await fetch("/api/upload", { method: "POST", body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        if (r.status === 413) statusEl.textContent = "gambar terlalu besar (maks 12 MB)";
+        else if (r.status === 415) statusEl.textContent = "format tidak didukung (JPEG/PNG/GIF/WebP)";
+        else statusEl.textContent = j.detail || j.error || ("gagal mengunggah (" + r.status + ")");
+        return;
+      }
+      pendingImages.push({ path: j.path, url: j.url, name: j.name || file.name || "gambar", bytes: j.bytes });
+      renderChips();
+      statusEl.textContent = "siap";
+    } catch (e) {
+      statusEl.textContent = "gagal mengunggah: " + String(e);
+    } finally {
+      uploadsRunning -= 1;
+      syncSendDisabled();
+    }
+  }
+
+  function uploadFiles(fileList) {
+    const files = [...fileList].filter((f) => f && f.type && f.type.startsWith("image/"));
+    for (const f of files) uploadImageFile(f);
+  }
+
+  function parseUserContent(raw) {
+    const paths = [];
+    let t = raw;
+    IMAGE_MARKER_RE.lastIndex = 0;
+    t = t.replace(IMAGE_MARKER_RE, (_, p) => { paths.push(p.trim()); return ""; });
+    t = t.replace(/^\[screenshot\]\s*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+    const images = paths.map((p) => {
+      const base = p.split("/").pop() || "gambar";
+      const allowed = p.startsWith("/root/.hermes/cache/webchat-images/")
+        || p.startsWith("/root/.hermes/cache/images/");
+      return {
+        path: p,
+        name: base,
+        url: allowed ? ("/api/image?path=" + encodeURIComponent(p)) : null,
+      };
+    });
+    return { text: t, images };
+  }
+
+  attachBtn.onclick = () => { if (!input.disabled) fileInput.click(); };
+  fileInput.onchange = () => {
+    uploadFiles(fileInput.files || []);
+    fileInput.value = "";
+  };
+
+  document.addEventListener("dragover", (e) => { e.preventDefault(); });
+  document.addEventListener("drop", (e) => { e.preventDefault(); });
+  main.addEventListener("dragenter", (e) => { e.preventDefault(); main.classList.add("dragover"); });
+  main.addEventListener("dragover", (e) => { e.preventDefault(); main.classList.add("dragover"); });
+  main.addEventListener("dragleave", (e) => {
+    if (!main.contains(e.relatedTarget)) main.classList.remove("dragover");
+  });
+  main.addEventListener("drop", (e) => {
+    e.preventDefault();
+    main.classList.remove("dragover");
+    if (e.dataTransfer && e.dataTransfer.files) uploadFiles(e.dataTransfer.files);
+  });
+
+  document.addEventListener("paste", (e) => {
+    if (input.disabled || !e.clipboardData) return;
+    const imgs = [];
+    for (const item of e.clipboardData.items) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const f = item.getAsFile();
+        if (f) imgs.push(f);
+      }
+    }
+    if (imgs.length) {
+      e.preventDefault();
+      uploadFiles(imgs);
+    }
+  });
+
   // ---------------- kirim ----------------
   async function send() {
     const text = input.value.trim();
-    if (!text || controller || history) return;
+    if ((!text && !pendingImages.length) || controller || history || uploadsRunning) return;
+
+    const sentImages = pendingImages.slice();
+    const markers = sentImages.map((p) => "[Image attached at: " + p.path + "]").join("\n");
+    const payload = text ? (text + "\n\n" + markers) : markers;
 
     input.value = "";
+    pendingImages = [];
+    renderChips();
     autoGrow();
-    live.push({ role: "user", text });
+    live.push({ role: "user", text, images: sentImages });
     const cur = { role: "assistant", text: "", thinking: "", tools: [], approvals: [], __streaming: true };
     live.push(cur);
     render();
@@ -915,7 +1121,7 @@
     statusEl.textContent = "mengirim…";
     dot.className = "dot on";
 
-    const body = { input: text, session_id: sessionId };
+    const body = { input: payload, session_id: sessionId };
     if (MODEL) body.model = MODEL;
     if (PROVIDER) body.provider = PROVIDER;      // provider eksplisit selalu dihormati
 
@@ -1067,7 +1273,11 @@
       for (const m of j.data || []) {
         if (m.role === "system") continue;
         if (m.role === "tool") { msgs.push({ role: "tool", tool: m.tool_name || "tool", text: textOf(m.content) }); continue; }
-        if (m.role === "user") { msgs.push({ role: "user", text: textOf(m.content) }); continue; }
+        if (m.role === "user") {
+          const parsed = parseUserContent(textOf(m.content));
+          msgs.push({ role: "user", text: parsed.text, images: parsed.images });
+          continue;
+        }
         const tools = (m.tool_calls || []).map((tc) => ({
           name: tc.function?.name || tc.name || "tool",
           detail: String(tc.function?.arguments || tc.arguments || "").slice(0, 160),
@@ -1096,7 +1306,7 @@
     history = null;
     $("banner").style.display = "none";
     input.disabled = false;
-    sendBtn.disabled = false;
+    syncSendDisabled();
     statusEl.textContent = "siap";
     sidEl.textContent = sessionId;
     render();
@@ -1116,7 +1326,7 @@
     history = null;
     $("banner").style.display = "none";
     input.disabled = false;
-    sendBtn.disabled = false;
+    syncSendDisabled();
     sidEl.textContent = sessionId;
     statusEl.textContent = "melanjutkan sesi (" + (target.source || "?") + ") — pesan baru masuk ke sesi ini";
     save();
@@ -1392,6 +1602,7 @@
   input.addEventListener("input", autoGrow);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePanels(); });
 
+  renderChips();
   render();
   sidEl.textContent = sessionId;
   paintModel();

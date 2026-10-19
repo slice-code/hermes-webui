@@ -99,6 +99,13 @@ _revoked: dict = {}  # nonce sesi yang dicabut (logout) -> exp token
 # Route yang boleh diakses tanpa login. Semua sisanya wajib sesi.
 PUBLIC_PATHS = {"/login", "/healthz", "/favicon.ico"}
 
+# Upload gambar webchat — disimpan di cache lokal, bukan di-proxy ke gateway.
+WEBCHAT_IMAGES_ROOT = Path("/root/.hermes/cache/webchat-images")
+HERMES_IMAGES_ROOT = Path("/root/.hermes/cache/images")
+_IMAGE_UPLOAD_MAX = 12 * 1024 * 1024
+_IMAGE_UPLOAD_SLACK = 64 * 1024
+_IMAGE_RETENTION_DAYS = 14
+
 
 def _pbkdf2(password: str, salt: bytes, rounds: int) -> bytes:
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, rounds)
@@ -984,6 +991,83 @@ def agent_task_payload(slug: str, task_id: str) -> dict | None:
     return {"board": info, "generated_at": int(time.time()), "task": task}
 
 
+def _sniff_image(data: bytes) -> tuple[str, str] | None:
+    """Deteksi JPEG/PNG/GIF/WebP dari magic bytes → (mime, ekstensi)."""
+    if len(data) >= 3 and data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg", "jpg"
+    if len(data) >= 8 and data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png", "png"
+    if len(data) >= 6 and data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif", "gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp", "webp"
+    return None
+
+
+def _parse_multipart_file(content_type: str, body: bytes) -> tuple[bytes, str] | None:
+    """Ambil field `file` dari multipart/form-data (tanpa modul cgi — dihapus di 3.13)."""
+    match = re.search(r'boundary=(?:"([^"]+)"|([^\s;]+))', content_type, re.I)
+    if not match:
+        return None
+    boundary = (match.group(1) or match.group(2)).encode("latin-1")
+    delim = b"--" + boundary
+    for part in body.split(delim)[1:]:
+        chunk = part
+        if chunk.startswith(b"--"):
+            break
+        if chunk.startswith(b"\r\n"):
+            chunk = chunk[2:]  # CRLF framing tepat satu, sebelum header part
+        sep = chunk.find(b"\r\n\r\n")
+        if sep < 0:
+            continue
+        headers = chunk[:sep].decode("latin-1", errors="replace")
+        data = chunk[sep + 4:]
+        if data.endswith(b"\r\n"):
+            data = data[:-2]  # CRLF framing tepat satu, sebelum boundary berikut
+        name_m = re.search(r'name="([^"]+)"', headers, re.I)
+        if not name_m or name_m.group(1) != "file":
+            continue
+        fn_m = re.search(r'filename="([^"]*)"', headers, re.I)
+        name = (fn_m.group(1) if fn_m else "").strip() or "gambar"
+        return data, name
+    return None
+
+
+def _image_path_allowed(resolved: Path) -> bool:
+    """Path gambar hanya boleh di bawah cache webchat atau cache Hermes."""
+    for root in (WEBCHAT_IMAGES_ROOT, HERMES_IMAGES_ROOT):
+        try:
+            resolved.relative_to(root.resolve())
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _prune_old_webchat_images() -> None:
+    """Bersihkan berkas webchat >14 hari — best-effort, tidak boleh gagalkan upload."""
+    root = WEBCHAT_IMAGES_ROOT
+    if not root.is_dir():
+        return
+    cutoff = time.time() - _IMAGE_RETENTION_DAYS * 24 * 3600
+    try:
+        for path in root.rglob("*"):
+            if path.is_file():
+                try:
+                    if path.stat().st_mtime < cutoff:
+                        path.unlink()
+                except OSError:
+                    pass
+        for child in root.iterdir():
+            if child.is_dir():
+                try:
+                    child.rmdir()
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "hermes-webchat/1.0"
@@ -1062,7 +1146,11 @@ class Handler(BaseHTTPRequestHandler):
             return user
         path = urllib.parse.urlsplit(self.path).path
         if path.startswith("/api/") or path.startswith("/v1/"):
-            self._fail(401, "login required", "Buka /login lalu masukkan kredensial.")
+            # POST berisi body yang belum dibaca (mis. upload 4 gambar tanpa sesi) →
+            # tutup koneksi agar sisa byte tidak jadi "request" hantu di keep-alive.
+            self.close_connection = True
+            self._fail(401, "login required", "Buka /login lalu masukkan kredensial.",
+                       extra_headers=[("Connection", "close")])
         else:
             nxt = urllib.parse.quote(self.path if self.path != "/" else "/", safe="/?=&")
             self._redirect("/login?next=" + nxt)
@@ -1106,6 +1194,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self._same_origin():
                 return self._fail(403, "cross-origin ditolak")
             return self._serve_static("workspace.html")
+        if path == "/api/image":
+            if not self._same_origin():
+                return self._fail(403, "cross-origin ditolak")
+            return self._serve_cached_image()
         if path in ("/api/agents/boards", "/api/agents/board", "/api/agents/task",
                     "/api/agents/live"):
             if not self._same_origin():
@@ -1142,7 +1234,12 @@ class Handler(BaseHTTPRequestHandler):
         if not self._require_auth():
             return
         if not self._same_origin():
-            return self._fail(403, "cross-origin ditolak")
+            # Body POST belum dibaca → sisa byte akan diurai sebagai request baru
+            # pada koneksi keep-alive (400 "Bad request syntax"). Tutup koneksinya.
+            self.close_connection = True
+            return self._fail(403, "cross-origin ditolak", extra_headers=[("Connection", "close")])
+        if path == "/api/upload":
+            return self._do_upload()
         if path == "/v1/chat/completions":
             return self._proxy_chat()
         # Kontrol run: buat run, jawab approval, stop, steer. Semuanya JSON pendek,
@@ -1161,6 +1258,109 @@ class Handler(BaseHTTPRequestHandler):
         if length <= 0 or length > limit:
             return b""
         return self.rfile.read(length)
+
+    def _read_body_exact(self) -> bytes | None:
+        """Baca body persis Content-Length; None kalau header tidak valid."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return None
+        if length < 0:
+            return None
+        return self.rfile.read(length)
+
+    def _do_upload(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self.close_connection = True
+            return self._fail(400, "bad Content-Length", extra_headers=[("Connection", "close")])
+        if length > _IMAGE_UPLOAD_MAX + _IMAGE_UPLOAD_SLACK:
+            # Tolak TANPA membaca body (bisa 13 MB+) → wajib tutup koneksi supaya
+            # sisa byte tidak diurai sebagai request berikutnya.
+            self.close_connection = True
+            return self._fail(413, "file too large", "Maksimal 12 MB per berkas.",
+                              extra_headers=[("Connection", "close")])
+        body = self._read_body_exact()
+        if body is None:
+            return self._fail(400, "bad Content-Length")
+        if len(body) != length:
+            return self._fail(400, "body tidak lengkap")
+
+        ctype = (self.headers.get("Content-Type") or "").strip()
+        ctype_main = ctype.split(";")[0].strip().lower()
+        orig_name = "gambar"
+        if ctype_main == "multipart/form-data":
+            parsed = _parse_multipart_file(ctype, body)
+            if parsed is None:
+                return self._fail(400, "field file wajib", "Kirim multipart dengan field `file`.")
+            file_data, orig_name = parsed
+        else:
+            file_data = body
+
+        if len(file_data) > _IMAGE_UPLOAD_MAX:
+            return self._fail(413, "file too large", "Maksimal 12 MB per berkas.")
+
+        sniffed = _sniff_image(file_data)
+        if sniffed is None:
+            return self._fail(415, "format tidak didukung",
+                              "Hanya JPEG, PNG, GIF, dan WebP (dicek dari isi berkas).")
+        mime, ext = sniffed
+
+        day = time.strftime("%Y%m%d", time.gmtime())
+        dest_dir = WEBCHAT_IMAGES_ROOT / day
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / ("%s.%s" % (secrets.token_hex(8), ext))
+        try:
+            # O_EXCL + mode 600 sejak create: berkas tidak pernah terlanjur 644.
+            fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            try:
+                os.write(fd, file_data)
+            finally:
+                os.close(fd)
+        except OSError as exc:
+            return self._fail(500, "gagal menyimpan gambar", str(exc))
+
+        try:
+            _prune_old_webchat_images()
+        except Exception:  # noqa: BLE001 - pembersihan tidak boleh menggagalkan upload
+            pass
+
+        abspath = str(dest.resolve())
+        self._json(200, {
+            "path": abspath,
+            "url": "/api/image?path=" + urllib.parse.quote(abspath, safe=""),
+            "name": orig_name,
+            "bytes": len(file_data),
+            "mime": mime,
+        })
+
+    def _serve_cached_image(self) -> None:
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        raw = (query.get("path") or [""])[0].strip()
+        if not raw:
+            return self._fail(400, "parameter path wajib")
+        try:
+            resolved = Path(raw).resolve()
+        except OSError:
+            return self._fail(400, "path tidak valid")
+        if not _image_path_allowed(resolved):
+            return self._fail(403, "path ditolak")
+        try:
+            data = resolved.read_bytes()
+        except OSError:
+            return self._fail(404, "berkas tidak ditemukan")
+        sniffed = _sniff_image(data)
+        if sniffed is None:
+            return self._fail(415, "bukan gambar yang didukung")
+        mime = sniffed[0]
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "private, max-age=3600")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _do_login(self) -> None:
         ip = self.client_address[0]

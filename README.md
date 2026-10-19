@@ -17,6 +17,34 @@ sungguhan yang bicara ke **API server Hermes** yang OpenAI-compatible.
 - Tombol **Keluar** (kanan header) mengakhiri sesi; tombol di sebelahnya menampilkan user aktif
 - Tombol **⚡ Auto** adalah saklar cepat tanpa konfirmasi; **⚙ Setelan** membuka pilihan lengkap (lihat **Auto approve**)
 
+## Upload gambar
+
+Di halaman chat kamu bisa melampirkan gambar ke pesan sebelum dikirim ke Hermes:
+
+- **📎** di composer — pilih satu atau beberapa berkas gambar
+- **Ctrl+V** — tempel screenshot atau gambar dari clipboard (selama tidak sedang mode riwayat)
+- **Drag & drop** ke area percakapan (`#main`) — lepas berkas gambar di sana
+
+Setelah diunggah, pratinjau kecil (chip) muncul di atas kotak tulis; tekan **×** untuk membatalkan lampiran.
+Saat **Kirim**, gambar tidak dikirim sebagai multipart ke gateway — yang dikirim ke `POST /v1/runs` adalah teks user plus penanda
+`[Image attached at: /path/absolut/gambar.jpg]` (satu baris per gambar). Hermes mengubah penanda itu menjadi bagian
+gambar native untuk model vision. Di gelembung chat yang kamu lihat, hanya teks dan thumbnail; penanda mentah tidak ditampilkan.
+
+Riwayat sesi (`Riwayat` → buka sesi) mem-parsing penanda yang sama dari `content` pesan user, menampilkan thumbnail lewat
+`GET /api/image?path=…` kalau path-nya di bawah cache yang diizinkan.
+
+**Batasan:**
+
+| Batas | Nilai |
+|---|---|
+| Gambar per pesan | maks **4** |
+| Ukuran per berkas | maks **12 MB** |
+| Format | **JPEG, PNG, GIF, WebP** (dicek magic bytes, bukan ekstensi) |
+| Penyimpanan | `/root/.hermes/cache/webchat-images/<YYYYMMDD>/` (mode `600`); berkas >**14 hari** dibersihkan otomatis (best-effort) |
+| Gambar dari surface lain | Hanya pratinjau penuh kalau path di bawah `/root/.hermes/cache/webchat-images/` atau `/root/.hermes/cache/images/`; path lain (mis. Telegram) hanya menampilkan nama berkas |
+
+Endpoint lokal (wajib sesi + same-origin, bukan proxy): `POST /api/upload`, `GET /api/image?path=<absolut>`.
+
 ## Login
 
 Halaman ini menempelkan `API_SERVER_KEY` gateway ke tiap request, jadi **tanpa login

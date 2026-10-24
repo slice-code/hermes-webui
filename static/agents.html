@@ -18,7 +18,7 @@
   ::selection{background:#33517f; color:#fff}
   [hidden]{display:none!important}
   body{
-    margin:0; background:var(--bg); color:var(--fg);
+    margin:0; background:var(--bg); color:var(--fg); overflow-x:hidden;
     font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
     -webkit-text-size-adjust:100%;
   }
@@ -46,22 +46,28 @@
   .icon{
     font:inherit; font-size:15px; line-height:1; color:var(--fg); background:var(--bg3);
     border:1px solid var(--line); border-radius:8px; width:38px; height:38px; cursor:pointer;
+    flex:none;
   }
   .icon:hover{border-color:var(--acc); color:#fff}
   .icon.busy{opacity:.5}
   .btn{
     font:inherit; font-size:13px; color:var(--fg); background:var(--bg3);
     border:1px solid var(--line); border-radius:9px; padding:8px 11px; min-height:38px;
-    display:inline-flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap;
+    display:inline-flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; white-space:nowrap;
   }
   .btn:hover{border-color:var(--acc); color:#fff}
   .btn:disabled{opacity:.45; cursor:not-allowed}
   .btn.primary{background:var(--acc); border-color:var(--acc); color:#0b1020; font-weight:600}
   .btn.primary:hover{background:#8fb2ff; color:#0b1020}
+  .btn.primary:disabled:hover{background:var(--acc)}
   .btn.danger{color:var(--err); border-color:#5c2b35; background:#1d1418}
   .btn.danger:hover{border-color:var(--err); color:#ffd0d8}
   .btn.sm{font-size:12px; padding:6px 9px; min-height:32px}
+  .btn.big{font-size:14px; padding:12px 16px; min-height:46px; border-radius:11px; font-weight:600}
   .btn.on{background:#1b2740; border-color:var(--acc); color:#fff}
+  .btn .kbd{font:11px ui-monospace,monospace; color:var(--dim); border:1px solid var(--line);
+    border-radius:4px; padding:0 4px; margin-left:2px}
+  body.mutating .btn[data-mut], body.mutating .cbtn{pointer-events:none}
 
   .bar{display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 12px; background:var(--bg2)}
   .bar .lb{font-size:11.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em}
@@ -76,6 +82,31 @@
   .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
   .dot.on{background:var(--ok)} .dot.off{background:var(--err)} .dot.busy{background:var(--warn)}
 
+  /* ---------- pencarian & filter ---------- */
+  .tools{
+    display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+    padding:8px 12px 9px; background:var(--bg2); border-top:1px solid var(--line);
+  }
+  .search{position:relative; display:flex; align-items:center; flex:1 1 240px; min-width:0}
+  .search .sicon{position:absolute; left:10px; color:var(--dim); font-size:14px; pointer-events:none}
+  .search input{
+    width:100%; padding-left:30px; padding-right:34px; min-height:38px; font-size:13px;
+    background:var(--bg3);
+  }
+  .search kbd{
+    position:absolute; right:9px; font:11px ui-monospace,monospace; color:var(--dim);
+    border:1px solid var(--line); border-radius:5px; padding:0 5px; background:#12161d; pointer-events:none;
+  }
+  .tools select{flex:0 1 auto; min-width:0; max-width:180px; min-height:38px; font-size:12.5px; padding:7px 8px}
+  .tgl{
+    display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--dim);
+    border:1px solid var(--line); border-radius:9px; padding:7px 10px; min-height:38px;
+    background:var(--bg3); cursor:pointer; user-select:none; white-space:nowrap;
+  }
+  .tgl input{width:16px; height:16px; accent-color:var(--acc); margin:0}
+  .tgl:hover{border-color:var(--acc)}
+  .tgl:has(input:checked){color:#fff; border-color:var(--acc); background:#1b2740}
+
   /* ---------- chip ringkasan / filter ---------- */
   .chips{display:flex; flex-wrap:wrap; gap:6px; padding:9px 12px 4px; background:var(--bg2); border-bottom:1px solid var(--line)}
   .chip{
@@ -84,10 +115,20 @@
     border:1px solid var(--line); border-radius:999px; cursor:pointer;
   }
   .chip b{color:var(--fg); font-weight:600}
+  .chip .zero{opacity:.55}
   .chip:hover{border-color:var(--acc); color:var(--fg)}
   .chip[aria-pressed="true"]{background:#1b2740; border-color:var(--acc); color:#fff}
   .swatch{width:8px;height:8px;border-radius:50%;flex:none;background:var(--dim)}
-  .chipNote{font-size:11.5px; color:var(--dim); padding:0 12px 8px; background:var(--bg2); border-bottom:1px solid var(--line); margin:0}
+  .chipNote{
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    font-size:11.5px; color:var(--dim); padding:2px 12px 8px; background:var(--bg2);
+    border-bottom:1px solid var(--line); margin:0; min-height:26px;
+  }
+  .chipNote .res{color:var(--fg)}
+  .linkBtn{
+    font:inherit; font-size:11.5px; color:var(--acc); background:none; border:none;
+    padding:2px 0; cursor:pointer; text-decoration:underline; text-underline-offset:2px;
+  }
 
   .errbar{
     margin:8px 12px 0; padding:9px 11px; border:1px solid var(--err); border-radius:9px;
@@ -100,50 +141,97 @@
     display:grid; grid-auto-flow:column; grid-auto-columns:minmax(240px,1fr); gap:10px;
     overflow-x:auto; overscroll-behavior-x:contain; padding-bottom:8px; align-items:start;
   }
+  /* Kalau semua kolom masih muat di lebar layar, paskan supaya tidak perlu
+     scroll horizontal sama sekali (7 kolom di 1400px tetap terbaca). */
+  .cols.fit{grid-auto-flow:row; grid-template-columns:repeat(var(--n,7),minmax(0,1fr)); overflow-x:visible}
   .col{
     background:var(--bg2); border:1px solid var(--line); border-radius:var(--radius);
     display:flex; flex-direction:column; min-width:0; min-height:130px;
+    transition:border-color .12s ease, background .12s ease;
   }
   .col.over{border-color:var(--acc); background:#141d2b; box-shadow:inset 0 0 0 1px #7aa2f766}
-  .col.nodrop .colBody{opacity:.75}
+  .col.nodrop .colBody{opacity:.6}
   .colHead{
-    display:flex; align-items:center; gap:7px; padding:9px 10px; border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:7px; padding:8px 8px 8px 10px; border-bottom:1px solid var(--line);
     background:var(--bg2); border-radius:var(--radius) var(--radius) 0 0;
   }
   .colHead .sw{width:8px;height:8px;border-radius:50%;flex:none}
   .colHead .nm{font-size:11.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--fg)}
   .colHead .ct{margin-left:auto; font-size:11.5px; color:var(--dim); background:var(--bg3);
     border:1px solid var(--line); border-radius:999px; padding:1px 7px; min-width:24px; text-align:center}
+  .cadd{
+    font:inherit; font-size:14px; line-height:1; color:var(--dim); background:transparent;
+    border:1px solid var(--line); border-radius:7px; width:26px; height:26px; cursor:pointer; flex:none;
+  }
+  .cadd:hover{color:#fff; border-color:var(--acc); background:#1b2740}
   .colBody{
     display:flex; flex-direction:column; gap:8px; padding:9px; min-height:86px;
-    max-height:calc(100dvh - 250px); overflow-y:auto;
+    max-height:calc(100dvh - 300px); overflow-y:auto;
   }
   .colEmpty{
     border:1px dashed var(--line); border-radius:9px; padding:14px 10px; text-align:center;
     font-size:12px; color:var(--dim); line-height:1.5;
   }
+  .colEmpty .dd{display:block; font-size:11px; opacity:.75; margin-top:3px}
 
+  /* mode ringkas: daftar satu kolom */
+  .list{display:flex; flex-direction:column; gap:8px}
+  .list .card{max-width:100%}
+
+  /* ---------- kartu ---------- */
   .card{
-    background:var(--bg3); border:1px solid var(--line); border-radius:10px; padding:9px 10px;
-    cursor:pointer; text-align:left; color:var(--fg); display:block; width:100%;
+    position:relative; background:var(--bg3); border:1px solid var(--line); border-radius:10px;
+    padding:9px 10px; cursor:pointer; text-align:left; color:var(--fg); display:block; width:100%;
+    transition:border-color .12s ease, box-shadow .12s ease, transform .08s ease;
   }
   .card:hover{border-color:var(--acc)}
+  .card:hover .grip{opacity:1}
   .card:active{cursor:grabbing}
-  .card.dragging{opacity:.45}
+  .card.dragging{opacity:.4; box-shadow:0 12px 26px #000a; transform:scale(.99)}
   .card.run{border-color:#33517f; background:#18202d}
   .card.new{animation:flash 1.6s ease-out}
   @keyframes flash{0%{box-shadow:0 0 0 2px var(--acc)} 100%{box-shadow:0 0 0 0 transparent}}
-  .card .ttl{
-    font-size:13.5px; line-height:1.4; overflow-wrap:anywhere;
-    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+  .ctop{display:flex; align-items:center; gap:6px; margin-bottom:5px; min-width:0}
+  .badge{
+    display:inline-flex; align-items:center; gap:5px; flex:none;
+    font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+    color:var(--c,#8b93a1); background:#12161d; border:1px solid var(--line);
+    border-radius:6px; padding:2px 6px;
   }
-  .cmeta{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px; font-size:11.5px; color:var(--dim)}
-  .who{font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--acc2); overflow-wrap:anywhere}
-  .prio{border:1px solid var(--line); border-radius:5px; padding:0 5px; font-size:10.5px; color:var(--dim)}
+  .badge .bd{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+  .badge.run .bd{animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1; transform:scale(1)} 50%{opacity:.3; transform:scale(.65)}}
+  .prio{
+    flex:none; border:1px solid var(--line); border-radius:5px; padding:1px 5px;
+    font-size:10.5px; font-weight:600; color:var(--dim); background:#12161d;
+  }
   .prio.p3{color:var(--warn); border-color:#4d3d20}
   .prio.p4,.prio.p5{color:var(--err); border-color:#5c2b35}
+  .grip{
+    margin-left:auto; color:var(--dim); font-size:12px; letter-spacing:1px; opacity:0;
+    transition:opacity .12s ease; cursor:grab; flex:none;
+  }
+  .cbtn{
+    font:inherit; font-size:15px; line-height:1; color:var(--dim); background:transparent;
+    border:1px solid transparent; border-radius:6px; width:26px; height:24px; cursor:pointer; flex:none;
+    display:inline-flex; align-items:center; justify-content:center;
+  }
+  .cbtn:hover{color:#fff; border-color:var(--acc); background:#1b2740}
+  .grip + .cbtn{margin-left:2px}
+  .ttl{
+    font-size:13.5px; line-height:1.4; overflow-wrap:anywhere;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .cmeta{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:7px; font-size:11.5px; color:var(--dim)}
+  .who{display:inline-flex; align-items:center; gap:5px; min-width:0; color:var(--acc2);
+    font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere}
+  .avatar{
+    display:inline-flex; align-items:center; justify-content:center; flex:none;
+    width:17px; height:17px; border-radius:50%; background:#24314a; color:#cfe0ff;
+    font:9.5px/1 ui-monospace,monospace; font-weight:700; text-transform:uppercase;
+  }
   .when{margin-left:auto; white-space:nowrap}
-  .cfoot{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:7px}
+  .cfoot{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px}
   .tag{
     display:inline-flex; align-items:center; gap:5px; font-size:10.5px; color:var(--dim);
     border:1px solid var(--line); border-radius:999px; padding:2px 7px; background:#12161d;
@@ -151,26 +239,93 @@
   .tag.live{color:#cfe0ff; border-color:#33517f; background:#1b2740}
   .tag.warn{color:#ffd9a8; border-color:#4d3d20; background:#241d10}
   .tag.rev{color:#f6e3c4; border-color:#5c4a22; background:#25200f}
-  .pulse{width:6px;height:6px;border-radius:50%;background:var(--acc);animation:pulse 1.4s ease-in-out infinite}
-  @keyframes pulse{0%,100%{opacity:1; transform:scale(1)} 50%{opacity:.35; transform:scale(.7)}}
 
-  .empty{color:var(--dim); text-align:center; padding:12vh 12px 0; font-size:14px; overflow-wrap:anywhere}
+  /* ---------- menu pindahkan ---------- */
+  .menu{
+    position:fixed; z-index:60; width:min(300px,calc(100vw - 20px)); max-height:min(70vh,420px);
+    overflow-y:auto; background:var(--bg2); border:1px solid #33517f; border-radius:11px;
+    box-shadow:0 16px 40px #000c; padding:5px;
+  }
+  .menuH{font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--dim); padding:5px 8px 6px}
+  .menuItem{
+    display:block; width:100%; text-align:left; font:inherit; font-size:13px; color:var(--fg);
+    background:transparent; border:1px solid transparent; border-radius:8px; padding:7px 8px;
+    cursor:pointer;
+  }
+  button.menuItem:hover{background:#1b2740; border-color:var(--acc)}
+  .menuItem .miName{display:flex; align-items:center; gap:6px; font-weight:600}
+  .menuItem .miAct{display:block; font-size:11px; color:var(--dim); margin-top:1px;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .menuItem.dis{cursor:not-allowed; opacity:.62}
+  .menuItem.dis .miName{color:var(--dim)}
+  .menuItem.dis .miAct{color:#a0685f}
+
+  /* ---------- empty state & onboarding ---------- */
+  .empty{color:var(--dim); text-align:center; padding:7vh 12px 0; font-size:14px; overflow-wrap:anywhere}
   .empty b{color:var(--fg); display:block; margin-bottom:6px; font-size:15px}
+  .onboard{
+    max-width:640px; margin:2vh auto 0; background:var(--bg2); border:1px solid var(--line);
+    border-radius:var(--radius); padding:18px 18px 20px;
+  }
+  .onboard h2{margin:0 0 4px; font-size:17px}
+  .onboard .lead{margin:0 0 14px; color:var(--dim); font-size:13px}
+  .steps{list-style:none; margin:0 0 16px; padding:0; display:flex; flex-direction:column; gap:9px}
+  .steps li{display:flex; gap:10px; align-items:flex-start; background:var(--bg3);
+    border:1px solid var(--line); border-radius:10px; padding:10px 11px}
+  .steps .n{
+    flex:none; width:22px; height:22px; border-radius:50%; background:#1b2740; color:#cfe0ff;
+    font:12px/22px ui-monospace,monospace; text-align:center; font-weight:700; border:1px solid #33517f;
+  }
+  .steps b{display:block; font-size:13.5px}
+  .steps span{display:block; font-size:12px; color:var(--dim); margin-top:2px}
+  .onboard .obFoot{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+
+  /* ---------- skeleton ---------- */
+  .sk{background:linear-gradient(90deg,#1b2029 25%,#232a36 37%,#1b2029 63%);
+    background-size:400% 100%; animation:shimmer 1.3s ease-in-out infinite; border-radius:8px}
+  @keyframes shimmer{0%{background-position:100% 0} 100%{background-position:0 0}}
+  .skCol{background:var(--bg2); border:1px solid var(--line); border-radius:var(--radius); padding:9px;
+    display:flex; flex-direction:column; gap:8px; min-width:0}
+  .skHead{height:12px; width:52%; margin:2px 2px 4px}
+  .skCard{height:74px}
 
   /* ---------- sheet detail ---------- */
   .sheetWrap{position:fixed; inset:0; z-index:30; display:flex; align-items:flex-end; justify-content:center}
   .sheet{
-    position:relative; width:100%; max-width:800px; max-height:90vh; display:flex; flex-direction:column;
+    position:relative; width:100%; max-width:820px; max-height:92vh; display:flex; flex-direction:column;
     background:var(--bg2); border:1px solid var(--line); border-bottom:none;
-    border-radius:14px 14px 0 0; box-shadow:0 -14px 40px #0009;
+    border-radius:16px 16px 0 0; box-shadow:0 -14px 40px #0009;
   }
   .sheetBg{position:absolute; inset:0; background:#000a}
-  .sheet header{display:flex; align-items:flex-start; gap:10px; padding:11px 13px; border-bottom:1px solid var(--line)}
-  .sheet h2{margin:0; font-size:14.5px; line-height:1.4; overflow-wrap:anywhere; min-width:0; flex:1}
-  .sheet .shBody{overflow-y:auto; padding:12px 13px 24px; overflow-wrap:anywhere}
-  .acts{display:flex; flex-wrap:wrap; gap:6px; margin:0 0 14px}
-  .sec{margin:0 0 14px}
-  .sec h3{margin:0 0 6px; font:11.5px/1 inherit; text-transform:uppercase; letter-spacing:.07em; color:var(--dim)}
+  .sheet header{display:flex; align-items:flex-start; gap:10px; padding:12px 13px 9px; border-bottom:1px solid var(--line)}
+  .sheet h2{margin:0; font-size:15px; line-height:1.4; overflow-wrap:anywhere; min-width:0; flex:1}
+  .sheet .shBody{overflow-y:auto; padding:12px 13px 26px; overflow-wrap:anywhere}
+  .shTop{display:flex; flex-wrap:wrap; gap:7px; align-items:center; margin:0 0 9px}
+  .shSum{display:flex; flex-wrap:wrap; gap:6px 16px; font-size:12.5px; color:var(--dim);
+    background:var(--bg3); border:1px solid var(--line); border-radius:10px; padding:9px 11px; margin:0 0 13px}
+  .shSum .v{color:var(--fg)}
+  .shSum .idrow{display:inline-flex; align-items:center; gap:6px; min-width:0}
+  .shSum .idrow code{font:12px ui-monospace,monospace; color:var(--acc2); overflow-wrap:anywhere}
+  .shSum .mini{
+    font:11px ui-monospace,monospace; color:var(--acc); background:#12161d; border:1px solid var(--line);
+    border-radius:6px; padding:2px 6px; cursor:pointer; min-height:0;
+  }
+  .shSum .mini:hover{border-color:var(--acc); color:#fff}
+  .acts{display:flex; flex-wrap:wrap; gap:7px; margin:0 0 14px}
+  .acts.primary .btn.big{flex:1 1 190px}
+  .sec{margin:0 0 15px}
+  .sec h3{margin:0 0 7px; font:11.5px/1 inherit; text-transform:uppercase; letter-spacing:.07em; color:var(--dim)}
+  .moves{display:flex; flex-direction:column; gap:5px}
+  .mv{
+    display:flex; align-items:center; gap:8px; width:100%; text-align:left; font:inherit; font-size:13px;
+    color:var(--fg); background:var(--bg3); border:1px solid var(--line); border-radius:9px;
+    padding:9px 10px; cursor:pointer; min-height:42px;
+  }
+  .mv:hover:not(:disabled){border-color:var(--acc); background:#1b2740}
+  .mv:disabled{opacity:.55; cursor:not-allowed}
+  .mv .mvName{font-weight:600; flex:none}
+  .mv .mvWhy{font-size:11.5px; color:var(--dim); margin-left:auto; text-align:right; overflow-wrap:anywhere}
+  .mv:disabled .mvWhy{color:#a0685f}
   .kv{display:flex; flex-wrap:wrap; gap:6px 14px; font-size:13px}
   .kv .k{color:var(--dim)}
   .mono{
@@ -190,10 +345,15 @@
     font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;
     white-space:pre-wrap; overflow-wrap:anywhere; max-height:40vh; overflow-y:auto;
   }
-  .cmt{border-left:2px solid var(--line); padding:0 0 0 9px; margin:0 0 10px}
-  .cmt .h{font-size:11.5px; color:var(--dim); display:flex; gap:8px; flex-wrap:wrap}
-  .cmt .h b{color:var(--acc2); font-weight:600}
-  .cmt .b{font-size:13px; white-space:pre-wrap; overflow-wrap:anywhere; margin-top:3px}
+  .tl{border-left:2px solid var(--line); margin:0 0 0 4px; padding:0 0 0 11px; display:flex; flex-direction:column; gap:10px}
+  .tl .it{position:relative}
+  .tl .it::before{content:""; position:absolute; left:-16px; top:6px; width:7px; height:7px;
+    border-radius:50%; background:var(--line); border:1px solid var(--bg2)}
+  .tl .it.cmt::before{background:var(--acc2)}
+  .tl .it.ev::before{background:#3d4a63}
+  .tl .h{font-size:11.5px; color:var(--dim); display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .tl .h b{color:var(--acc2); font-weight:600}
+  .tl .b{font-size:13px; white-space:pre-wrap; overflow-wrap:anywhere; margin-top:2px}
   .ev{font:12px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--dim); padding:3px 0; overflow-wrap:anywhere}
   .ev b{color:var(--fg); font-weight:600}
   .muted{color:var(--dim); font-size:12.5px}
@@ -220,28 +380,54 @@
   .modalFoot{display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; margin-top:14px}
   .modalErr{color:#ffc9d2; background:#241419; border:1px solid var(--err); border-radius:8px;
     padding:7px 9px; font-size:12px; margin-bottom:10px; overflow-wrap:anywhere}
+  .colPick{display:flex; flex-direction:column; gap:6px}
+  .colPick label{display:flex; align-items:center; gap:9px; font-size:13px; text-transform:none;
+    letter-spacing:0; color:var(--fg); margin:0; padding:7px 8px; border:1px solid var(--line);
+    border-radius:9px; background:var(--bg3); cursor:pointer}
+  .colPick input{width:18px; height:18px; min-height:0; accent-color:var(--acc)}
+  .kbdList{display:flex; flex-direction:column; gap:6px}
+  .kbdList .r{display:flex; align-items:center; gap:9px; font-size:13px}
+  .kbdList .r kbd{
+    font:12px ui-monospace,monospace; background:#12161d; border:1px solid var(--line);
+    border-radius:6px; padding:2px 7px; color:#cfe0ff; min-width:26px; text-align:center;
+  }
 
   /* ---------- toast ---------- */
   #toast{
-    position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:60;
-    max-width:min(680px,calc(100vw - 24px)); padding:10px 13px; border-radius:10px;
+    position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:70;
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    max-width:min(680px,calc(100vw - 24px)); padding:10px 12px; border-radius:10px;
     background:#1b2740; border:1px solid #33517f; color:#dce8ff; font-size:12.5px;
     box-shadow:0 10px 30px #0009; overflow-wrap:anywhere; white-space:pre-wrap;
   }
   #toast.err{background:#2a161c; border-color:#6d2b39; color:#ffd0d8}
+  #toast .tact{
+    font:inherit; font-size:12px; font-weight:600; color:#0b1020; background:var(--acc);
+    border:1px solid var(--acc); border-radius:7px; padding:5px 9px; cursor:pointer; flex:none;
+  }
+  #toast .tact:hover{background:#8fb2ff}
+  #toast .tact:disabled{opacity:.6; cursor:wait}
 
   @media (max-width:760px){
-    .top{padding:8px 10px}
+    .top{padding:8px 10px; gap:6px}
     .top h1{font-size:14px}
     nav.pages a{padding:0 8px; font-size:11.5px; min-height:30px}
     .icon{width:34px;height:34px}
-    .bar{padding:7px 10px}
+    .bar{padding:7px 10px; gap:6px}
+    .tools{padding:7px 10px 8px}
+    .tools select{max-width:none; flex:1 1 130px}
+    .search{flex:1 1 100%}
     .chips{padding:8px 10px 6px; flex-wrap:nowrap; overflow-x:auto; overscroll-behavior-x:contain}
     .chip{flex:0 0 auto}
+    .chipNote{padding:2px 10px 8px}
     main{padding:8px 10px 26px}
-    .cols{grid-auto-columns:80vw; gap:8px}
     .colBody{max-height:none}
     .btn{padding:7px 9px; min-height:36px; font-size:12.5px}
+    .btn.big{padding:12px 14px; min-height:46px; font-size:13.5px}
+    .onboard{padding:14px 13px 16px; margin-top:1vh}
+    .sheet{max-height:94vh}
+    .acts.primary .btn.big{flex:1 1 100%}
+    #toast{bottom:10px; font-size:12px}
   }
 </style>
 </head>
@@ -257,7 +443,8 @@
         <a href="/workspace">Workspace</a>
         <a href="/otomasi" title="Cron, skills, toolsets, status sistem">Otomasi</a>
       </nav>
-      <button class="btn primary" id="newTask" title="Buat task baru di board ini">+ Task</button>
+      <button class="btn primary" id="newTask" title="Buat task baru (n)">+ Task</button>
+      <button class="btn" id="colBtn" title="Pilih kolom yang ditampilkan">Kolom</button>
       <button class="icon" id="refresh" aria-label="Muat ulang sekarang" title="Muat ulang sekarang">⟳</button>
     </header>
 
@@ -271,6 +458,21 @@
         <span id="updated">memuat…</span>
       </span>
     </div>
+
+    <div class="tools">
+      <div class="search">
+        <span class="sicon" aria-hidden="true">⌕</span>
+        <input id="q" type="text" placeholder="Cari judul, assignee, atau id…" aria-label="Cari task" autocomplete="off" spellcheck="false">
+        <kbd aria-hidden="true">/</kbd>
+      </div>
+      <select id="fWho" aria-label="Filter assignee"></select>
+      <select id="fPrio" aria-label="Filter prioritas">
+        <option value="">Semua prioritas</option>
+      </select>
+      <label class="tgl" for="fRun"><input type="checkbox" id="fRun"><span>Hanya yang jalan</span></label>
+      <button class="btn sm" id="fReset" title="Hapus pencarian dan semua filter">Reset</button>
+    </div>
+
     <div class="chips" id="chips" role="group" aria-label="Ringkasan &amp; filter status"></div>
     <p class="chipNote" id="chipNote"></p>
   </div>
@@ -278,8 +480,14 @@
   <div id="errbar"></div>
 
   <main id="main">
-    <div class="cols" id="cols" aria-label="Kolom papan kanban"></div>
     <div id="emptyAll"></div>
+    <div class="cols" id="cols" aria-label="Kolom papan kanban">
+      <div class="skCol"><div class="sk skHead"></div><div class="sk skCard"></div><div class="sk skCard"></div></div>
+      <div class="skCol"><div class="sk skHead"></div><div class="sk skCard"></div><div class="sk skCard"></div></div>
+      <div class="skCol"><div class="sk skHead"></div><div class="sk skCard"></div><div class="sk skCard"></div></div>
+      <div class="skCol"><div class="sk skHead"></div><div class="sk skCard"></div><div class="sk skCard"></div></div>
+    </div>
+    <div id="emptyList"></div>
   </main>
 </div>
 
@@ -295,7 +503,11 @@
 </div>
 
 <div id="modalHost"></div>
-<div id="toast" hidden aria-live="polite"></div>
+
+<div id="toast" hidden aria-live="polite" role="status">
+  <span id="toastText"></span>
+  <button class="tact" id="toastAct" type="button" hidden></button>
+</div>
 
 <script>
 (() => {
@@ -312,7 +524,9 @@
   });
 
   const $ = (id) => document.getElementById(id);
-  const LS = "hermes-agents-v1";
+  const LS_BOARD = "hermes-agents-v1";
+  const LS_COLS = "hermes-agents-cols-v2";
+  const LS_FILT = "hermes-agents-filter-v2";
   const REFRESH_MS = 10000;
   const STATUS = {
     triage:   { label: "Triage",   color: "#bb9af7" },
@@ -328,14 +542,18 @@
   const COLUMNS = ["triage", "todo", "ready", "running", "review", "blocked", "done"];
   const CORE_CHIPS = ["running", "ready", "todo", "blocked", "review", "done", "triage"];
   const PRIORITY_LABEL = ["P0", "P1", "P2", "P3", "P4", "P5"];
+  const NARROW_HIDDEN = ["triage", "done"];     // default kolom tersembunyi di layar sempit
 
   const state = {
     slug: "", boards: [], counts: {}, tasks: [], filter: null,
-    updatedAt: 0, error: "", busy: false,
+    updatedAt: 0, error: "", busy: false, loaded: false, mutating: 0,
     assignees: [], assigneeNote: "", chipEls: null,
     dragId: "", detailId: "", detail: null, freshId: "", lastFocus: null,
+    compact: false, cols: { wide: null, narrow: null },
+    q: "", who: "", prio: "", runningOnly: false,
   };
   let toastTimer = null;
+  let menuEl = null;
 
   // ---------------- util ----------------
   const el = (tag, cls, text) => {
@@ -360,13 +578,50 @@
   const activityAt = (t) =>
     (t.last_event && t.last_event.created_at) || t.last_heartbeat_at || t.started_at || t.created_at;
 
-  function toast(text, kind) {
+  function initials(who) {
+    const parts = String(who || "").split(/[\s._-]+/).filter(Boolean);
+    if (!parts.length) return "?";
+    if (parts.length === 1) return parts[0].slice(0, 2);
+    return (parts[0][0] + parts[1][0]);
+  }
+
+  function lsGet(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw === null) return fallback;
+      return JSON.parse(raw);
+    } catch { return fallback; }
+  }
+  function lsSet(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  }
+
+  // ---------------- toast (+ aksi urungkan) ----------------
+  function toast(text, kind, opts) {
+    opts = opts || {};
     const box = $("toast");
-    box.textContent = text;
+    const act = $("toastAct");
+    $("toastText").textContent = text;
     box.hidden = false;
     box.className = kind === "err" ? "err" : "";
+    if (opts.action) {
+      act.hidden = false;
+      act.disabled = false;
+      act.textContent = opts.action.label;
+      act.onclick = async () => {
+        act.disabled = true;
+        act.textContent = "Mengembalikan…";
+        // act() menampilkan toast hasilnya sendiri — jangan sembunyikan setelah itu.
+        await opts.action.run();
+      };
+    } else {
+      act.hidden = true;
+      act.onclick = null;
+      act.disabled = false;
+    }
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { box.hidden = true; }, kind === "err" ? 9000 : 5000);
+    const life = opts.action ? 12000 : (kind === "err" ? 9000 : 5000);
+    toastTimer = setTimeout(() => { box.hidden = true; }, life);
   }
 
   async function copyText(text, button) {
@@ -382,9 +637,12 @@
       } catch { ok = false; }
     }
     if (button) {
+      const orig = button.dataset.orig || button.textContent;
+      button.dataset.orig = orig;
       button.textContent = ok ? "Tersalin ✓" : "Gagal menyalin";
-      setTimeout(() => { button.textContent = "Salin"; }, 1500);
+      setTimeout(() => { button.textContent = orig; }, 1500);
     }
+    return ok;
   }
 
   // ---------------- modal internal ----------------
@@ -460,6 +718,8 @@
         form.appendChild(box2);
       }
 
+      if (opts.body) form.appendChild(opts.body);
+
       const foot = el("div", "modalFoot");
       const cancel = el("button", "btn", opts.cancelLabel || "Batal");
       cancel.type = "button";
@@ -477,7 +737,7 @@
         resolve(value);
       };
       const onKey = (e) => {
-        if (e.key === "Escape") { e.preventDefault(); close(null); }
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(null); }
       };
       document.addEventListener("keydown", onKey, true);
       cancel.onclick = () => close(null);
@@ -489,6 +749,7 @@
           const inp = inputs[name];
           values[name] = inp.type === "checkbox" ? inp.checked : inp.value;
         }
+        if (opts.collect) opts.collect(values);
         if (opts.validate) {
           const msg = opts.validate(values);
           if (msg) { errBox.textContent = msg; errBox.hidden = false; return; }
@@ -523,20 +784,19 @@
     const data = await fetchJSON("/api/agents/boards");
     if (!Array.isArray(data)) throw new Error("daftar board tidak dikenali");
     state.boards = data;
-    const saved = readSaved();
     let wanted = "";
     try { wanted = String(new URLSearchParams(location.search).get("slug") || ""); } catch {}
-    const usable = state.boards.filter((b) => b.slug === (wanted || saved));
+    const usable = state.boards.filter((b) => b.slug === (wanted || readSavedBoard()));
     const running = state.boards.filter((b) => b.running_count > 0);
     const pick = usable[0] || state.boards.find((b) => b.current) || running[0] ||
                  state.boards.find((b) => b.task_count > 0) || state.boards[0];
     state.slug = pick ? pick.slug : "";
-    try { localStorage.setItem(LS, state.slug); } catch {}
+    try { localStorage.setItem(LS_BOARD, state.slug); } catch {}
     renderBoards();
   }
 
-  function readSaved() {
-    try { return String(localStorage.getItem(LS) || ""); } catch { return ""; }
+  function readSavedBoard() {
+    try { return String(localStorage.getItem(LS_BOARD) || ""); } catch { return ""; }
   }
 
   async function loadAssignees(force) {
@@ -549,10 +809,11 @@
       state.assigneeNote = "Daftar profil gagal dimuat: " + (e && e.message ? e.message : e) +
         " — assignee baru bisa diisi setelah CLI kanban sehat.";
     }
+    renderAssigneeFilter();
   }
 
   async function loadBoard() {
-    if (!state.slug) { state.updatedAt = Math.floor(Date.now() / 1000); return; }
+    if (!state.slug) { state.updatedAt = Math.floor(Date.now() / 1000); state.loaded = true; return; }
     state.busy = true;
     $("refresh").classList.add("busy");
     $("dot").className = "dot busy";
@@ -565,7 +826,9 @@
       state.tasks = data.tasks || [];
       state.updatedAt = data.generated_at || Math.floor(Date.now() / 1000);
       state.error = "";
+      state.loaded = true;
       renderChips();
+      renderAssigneeFilter();
       renderBoard();
     } finally {
       state.busy = false;
@@ -582,6 +845,7 @@
       paintError();
       paintUpdated();
     } catch (e) {
+      if (!state.loaded) { state.loaded = true; renderBoard(); }
       state.error = "Gagal memuat data papan: " + (e && e.message ? e.message : String(e));
       paintError();
     }
@@ -671,20 +935,123 @@
       const entry = state.chipEls[key];
       const n = Number(state.counts[key] || 0);
       entry.num.textContent = String(n);
+      entry.num.className = n ? "" : "zero";
       entry.chip.setAttribute("aria-pressed", state.filter === key ? "true" : "false");
       entry.chip.setAttribute("aria-label",
         "Filter status " + label(key) + ", " + n + " task" +
         (state.filter === key ? " (aktif — ketuk untuk melepas)" : ""));
     }
-    const total = Number(state.counts.total || 0);
-    const archived = Number(state.counts.archived || 0);
-    $("chipNote").textContent = state.slug
-      ? total + " task di board ini" + (archived ? " (" + archived + " arsip tidak ditampilkan)" : "") +
-        (state.filter ? " · filter: " + label(state.filter) : "")
-      : "";
+    paintNote();
   }
 
-  // ---------------- render papan ----------------
+  // ---------------- filter ----------------
+  function filtersActive() {
+    return !!(state.filter || state.q.trim() || state.who || state.prio !== "" || state.runningOnly);
+  }
+
+  function matches(t) {
+    if (state.filter && t.status !== state.filter) return false;
+    if (state.who === "__none__") { if (t.assignee) return false; }
+    else if (state.who && t.assignee !== state.who) return false;
+    if (state.prio !== "" && Number(t.priority || 0) !== Number(state.prio)) return false;
+    if (state.runningOnly && !(t.status === "running" || t.worker_alive)) return false;
+    const q = state.q.trim().toLowerCase();
+    if (q) {
+      const hay = ((t.title || "") + " " + (t.assignee || "") + " " + t.id).toLowerCase();
+      if (hay.indexOf(q) < 0) return false;
+    }
+    // Kolom yang disembunyikan tetap bisa dilihat lewat chip statusnya.
+    if (!visibleCols().includes(t.status) && state.filter !== t.status) return false;
+    return true;
+  }
+
+  function visibleTasks() {
+    return state.tasks.filter((t) => t.status !== "archived" && matches(t));
+  }
+
+  function saveFilters() {
+    lsSet(LS_FILT, { q: state.q, who: state.who, prio: state.prio, runningOnly: state.runningOnly });
+  }
+
+  function readFilters() {
+    const saved = lsGet(LS_FILT, null);
+    if (!saved || typeof saved !== "object") return;
+    state.q = typeof saved.q === "string" ? saved.q : "";
+    state.who = typeof saved.who === "string" ? saved.who : "";
+    state.prio = saved.prio === undefined || saved.prio === null ? "" : String(saved.prio);
+    state.runningOnly = !!saved.runningOnly;
+  }
+
+  function paintNote() {
+    const note = $("chipNote");
+    note.innerHTML = "";
+    if (!state.slug) {
+      note.appendChild(el("span", null, "Belum ada board dipilih."));
+      return;
+    }
+    const total = Number(state.counts.total || 0) - Number(state.counts.archived || 0);
+    const shown = visibleTasks().length;
+    const bits = [];
+    bits.push(total + " task di board ini");
+    if (Number(state.counts.archived || 0)) bits.push(Number(state.counts.archived) + " arsip disembunyikan");
+    note.appendChild(el("span", null, bits.join(" · ")));
+    if (filtersActive()) {
+      const res = el("span", "res", "· menampilkan " + shown + " dari " + total);
+      note.appendChild(res);
+      const reset = el("button", "linkBtn", "Reset filter");
+      reset.type = "button";
+      reset.onclick = resetFilters;
+      note.appendChild(reset);
+    }
+    if (state.filter) note.appendChild(el("span", "res", "· status: " + label(state.filter)));
+    // Task yang tersembunyi karena pilihannya di tombol "Kolom" perlu disebut,
+    // supaya daftar yang lebih pendek tidak terbaca sebagai data hilang.
+    const hiddenCols = state.tasks.filter((t) => t.status !== "archived" &&
+      !visibleCols().includes(t.status) && state.filter !== t.status).length;
+    if (hiddenCols) {
+      note.appendChild(el("span", null, "· " + hiddenCols + " task di kolom tersembunyi"));
+      const show = el("button", "linkBtn", "tampilkan");
+      show.type = "button";
+      show.onclick = openColumnPicker;
+      note.appendChild(show);
+    }
+  }
+
+  function renderAssigneeFilter() {
+    const sel = $("fWho");
+    if (!sel) return;
+    const names = {};
+    for (const t of state.tasks) if (t.assignee) names[t.assignee] = true;
+    for (const a of state.assignees) if (a && a.name) names[a.name] = true;
+    const keys = Object.keys(names).sort();
+    sel.innerHTML = "";
+    const all = el("option", null, "Semua assignee");
+    all.value = "";
+    sel.appendChild(all);
+    for (const name of keys) {
+      const op = el("option", null, name);
+      op.value = name;
+      sel.appendChild(op);
+    }
+    const none = el("option", null, "(tanpa assignee)");
+    none.value = "__none__";
+    sel.appendChild(none);
+    sel.value = state.who || "";
+    if (sel.value !== (state.who || "")) sel.value = "";
+  }
+
+  function resetFilters() {
+    state.q = ""; state.who = ""; state.prio = ""; state.runningOnly = false; state.filter = null;
+    $("q").value = "";
+    $("fWho").value = "";
+    $("fPrio").value = "";
+    $("fRun").checked = false;
+    saveFilters();
+    paintChips();
+    renderBoard();
+  }
+
+  // ---------------- kolom ----------------
   function columnsFor() {
     const cols = COLUMNS.slice();
     for (const key of Object.keys(state.counts)) {
@@ -694,6 +1061,88 @@
     return cols;
   }
 
+  function readCols() {
+    const saved = lsGet(LS_COLS, null);
+    if (saved && typeof saved === "object") {
+      if (Array.isArray(saved.wide)) state.cols.wide = saved.wide.filter((k) => typeof k === "string");
+      if (Array.isArray(saved.narrow)) state.cols.narrow = saved.narrow.filter((k) => typeof k === "string");
+    }
+  }
+
+  function savedCols() {
+    return state.cols[state.compact ? "narrow" : "wide"];
+  }
+
+  function visibleCols() {
+    const all = columnsFor();
+    const saved = savedCols();
+    if (!saved) {
+      return state.compact ? all.filter((k) => !NARROW_HIDDEN.includes(k)) : all;
+    }
+    return all.filter((k) => saved.includes(k));
+  }
+
+  function isColVisible(key) {
+    const saved = savedCols();
+    if (!saved) return state.compact ? !NARROW_HIDDEN.includes(key) : true;
+    return saved.includes(key);
+  }
+
+  function toggleCol(key, on) {
+    const saved = (savedCols() || visibleCols()).slice();
+    const set = new Set(saved);
+    if (on) set.add(key); else set.delete(key);
+    // urutkan mengikuti urutan kolom baku supaya stabil
+    const ordered = columnsFor().filter((k) => set.has(k));
+    state.cols[state.compact ? "narrow" : "wide"] = ordered;
+    lsSet(LS_COLS, state.cols);
+    if (state.filter && !ordered.includes(state.filter)) state.filter = null;
+    paintChips();
+    renderBoard();
+  }
+
+  function openColumnPicker() {
+    const list = el("div", "colPick");
+    for (const key of columnsFor()) {
+      const row = el("label");
+      const inp = el("input");
+      inp.type = "checkbox";
+      inp.checked = isColVisible(key);
+      inp.value = key;
+      inp.onchange = () => toggleCol(key, inp.checked);
+      const sw = el("span", "swatch");
+      sw.style.background = statusInfo(key).color;
+      row.appendChild(inp);
+      row.appendChild(sw);
+      row.appendChild(el("span", null, label(key)));
+      list.appendChild(row);
+    }
+    const hint = el("div", "muted",
+      state.compact
+        ? "Mode ringkas (layar < 760px) memakai daftar satu kolom; pilihan ini menentukan status yang ikut tampil di daftar."
+        : "Pilihan disimpan di peramban ini dan bertahan setelah muat ulang.");
+    hint.style.marginTop = "8px";
+    const wrap = el("div");
+    wrap.appendChild(list);
+    wrap.appendChild(hint);
+    ask({
+      title: "Tampilkan kolom",
+      intro: "Centang kolom yang ingin ditampilkan.",
+      body: wrap,
+      submit: "Selesai",
+      cancelLabel: "Tutup",
+    });
+  }
+
+  // ---------------- kartu ----------------
+  function statusBadge(status) {
+    const info = statusInfo(status);
+    const badge = el("span", "badge" + (status === "running" ? " run" : ""), info.label);
+    badge.style.setProperty("--c", info.color);
+    badge.appendChild(el("span", "bd"));
+    return badge;
+  }
+
   function cardEl(task) {
     const card = el("article", "card" + (task.status === "running" ? " run" : "") +
       (task.id === state.freshId ? " new" : ""));
@@ -701,30 +1150,55 @@
     card.tabIndex = 0;
     card.setAttribute("role", "button");
     card.dataset.id = task.id;
+    card.dataset.status = task.status;
     card.setAttribute("aria-label",
       "Task " + task.title + ", status " + label(task.status) +
       (task.assignee ? ", agent " + task.assignee : "") + ", " + rel(activityAt(task)));
 
+    const top = el("div", "ctop");
+    top.appendChild(statusBadge(task.status));
+    const pr = Number(task.priority || 0);
+    if (pr > 0) top.appendChild(el("span", "prio p" + pr, PRIORITY_LABEL[pr] || ("P" + pr)));
+    const grip = el("span", "grip", "⠿");
+    grip.setAttribute("aria-hidden", "true");
+    grip.title = "Tarik ke kolom lain";
+    top.appendChild(grip);
+    const move = el("button", "cbtn", "⋯");
+    move.type = "button";
+    move.setAttribute("aria-haspopup", "menu");
+    move.setAttribute("aria-label", "Pindahkan task " + task.title);
+    move.title = "Pindahkan ke…";
+    move.draggable = false;
+    move.onclick = (e) => { e.stopPropagation(); openMoveMenu(task, move); };
+    move.onpointerdown = (e) => e.stopPropagation();
+    top.appendChild(move);
+    card.appendChild(top);
+
     card.appendChild(el("div", "ttl", task.title || "(tanpa judul)"));
 
     const meta = el("div", "cmeta");
-    if (task.assignee) meta.appendChild(el("span", "who", task.assignee));
-    else meta.appendChild(el("span", "prio", "unassigned"));
-    const pr = Number(task.priority || 0);
-    meta.appendChild(el("span", "prio p" + pr, PRIORITY_LABEL[pr] || ("P" + pr)));
+    if (task.assignee) {
+      const who = el("span", "who");
+      who.appendChild(el("span", "avatar", initials(task.assignee)));
+      who.appendChild(el("span", null, task.assignee));
+      meta.appendChild(who);
+    } else {
+      meta.appendChild(el("span", "prio", "unassigned"));
+    }
     meta.appendChild(el("span", "when", rel(activityAt(task))));
     card.appendChild(meta);
 
     const foot = el("div", "cfoot");
-    if (task.status === "running") {
-      const live = el("span", "tag live");
-      live.appendChild(el("span", "pulse"));
-      live.appendChild(el("span", null, "jalan"));
-      foot.appendChild(live);
+    if (task.comment_count) {
+      const tag = el("span", "tag", "💬 " + task.comment_count);
+      tag.title = task.comment_count + " komentar";
+      foot.appendChild(tag);
     }
-    if (task.comment_count) foot.appendChild(el("span", "tag", "💬 " + task.comment_count));
     if (task.status === "blocked" && task.block_kind) {
       foot.appendChild(el("span", "tag warn", task.block_kind));
+    }
+    if (task.status === "running" && task.worker_alive === false) {
+      foot.appendChild(el("span", "tag", "worker tidak ditemukan"));
     }
     if (task.parents && task.parents.length) foot.appendChild(el("span", "tag", "induk " + task.parents.length));
     if (foot.childNodes.length) card.appendChild(foot);
@@ -750,21 +1224,146 @@
     return card;
   }
 
-  function renderBoard() {
+  // ---------------- render papan ----------------
+  function boardVisibleCount() {
+    return Math.max(0, Number(state.counts.total || 0) - Number(state.counts.archived || 0));
+  }
+
+  function renderSkeleton() {
     const box = $("cols");
+    box.className = "cols";
     box.innerHTML = "";
+    for (let i = 0; i < 4; i++) {
+      const col = el("div", "skCol");
+      col.appendChild(el("div", "sk skHead"));
+      col.appendChild(el("div", "sk skCard"));
+      col.appendChild(el("div", "sk skCard"));
+      box.appendChild(col);
+    }
+    $("emptyAll").innerHTML = "";
+    $("emptyList").innerHTML = "";
+  }
+
+  function renderOnboarding() {
+    const panel = el("div", "onboard");
+    panel.appendChild(el("h2", null, "Papan ini masih kosong"));
+    panel.appendChild(el("p", "lead",
+      "Alur kerjanya tiga langkah: kamu menulis task, task masuk Ready, lalu dispatcher gateway menjalankan worker-nya."));
+    const steps = el("ol", "steps");
+    const data = [
+      ["Buat task", "Tulis judul singkat dan deskripsi yang jelas: konteks, batasan, dan cara verifikasi."],
+      ["Pindahkan ke Ready", "Task baru langsung lahir di Ready. Assignee menentukan profil worker yang menjalankannya."],
+      ["Worker jalan otomatis", "Dispatcher di gateway mengambil task Ready, membuka workspace, lalu melapor lewat komentar."],
+    ];
+    for (const [title, desc] of data) {
+      const li = el("li");
+      li.appendChild(el("span", "n", String(steps.childNodes.length + 1)));
+      const body = el("div");
+      body.appendChild(el("b", null, title));
+      body.appendChild(el("span", null, desc));
+      li.appendChild(body);
+      steps.appendChild(li);
+    }
+    panel.appendChild(steps);
+    const foot = el("div", "obFoot");
+    const big = el("button", "btn primary big", "Buat task pertama");
+    big.type = "button";
+    big.onclick = () => createTask({});
+    foot.appendChild(big);
+    const cols = el("button", "btn", "Pilih kolom");
+    cols.type = "button";
+    cols.onclick = openColumnPicker;
+    foot.appendChild(cols);
+    const help = el("button", "btn", "Pintasan (?)");
+    help.type = "button";
+    help.onclick = showShortcuts;
+    foot.appendChild(help);
+    panel.appendChild(foot);
+    return panel;
+  }
+
+  function renderNoResults() {
+    const panel = el("div", "onboard");
+    panel.appendChild(el("h2", null, "Tidak ada task yang cocok"));
+    const active = [];
+    if (state.q.trim()) active.push("pencarian \"" + state.q.trim() + "\"");
+    if (state.who) active.push("assignee " + (state.who === "__none__" ? "(tanpa assignee)" : state.who));
+    if (state.prio !== "") active.push("prioritas P" + state.prio);
+    if (state.runningOnly) active.push("hanya yang jalan");
+    if (state.filter) active.push("status " + label(state.filter));
+    panel.appendChild(el("p", "lead", "Filter aktif: " + active.join(", ") + "."));
+    const foot = el("div", "obFoot");
+    const reset = el("button", "btn primary", "Reset filter");
+    reset.type = "button";
+    reset.onclick = resetFilters;
+    foot.appendChild(reset);
+    const all = el("button", "btn", "Tampilkan semua kolom");
+    all.type = "button";
+    all.onclick = () => { state.cols[state.compact ? "narrow" : "wide"] = columnsFor().slice(); lsSet(LS_COLS, state.cols); paintChips(); renderBoard(); };
+    foot.appendChild(all);
+    panel.appendChild(foot);
+    return panel;
+  }
+
+  function renderBoard() {
+    if (!state.loaded) { renderSkeleton(); return; }
+    const box = $("cols");
+    const emptyAll = $("emptyAll");
+    const emptyList = $("emptyList");
+    box.innerHTML = "";
+    emptyAll.innerHTML = "";
+    emptyList.innerHTML = "";
+
     if (!state.boards.length) {
-      const empty = $("emptyAll");
-      empty.innerHTML = "";
+      box.hidden = true;
       const div = el("div", "empty");
       div.appendChild(el("b", null, "Belum ada board kanban"));
       div.appendChild(el("div", null, "Buat board lewat tombol \"Board baru\" di atas."));
-      empty.appendChild(div);
+      emptyAll.appendChild(div);
       $("chipNote").textContent = "";
       return;
     }
-    $("emptyAll").innerHTML = "";
 
+    const total = boardVisibleCount();
+    if (!total) {
+      box.hidden = true;
+      emptyAll.appendChild(renderOnboarding());
+      paintNote();
+      return;
+    }
+
+    const shown = visibleTasks();
+    if (!shown.length) {
+      box.hidden = true;
+      emptyAll.appendChild(renderNoResults());
+      paintNote();
+      return;
+    }
+
+    box.hidden = false;
+    const cols = visibleCols();
+
+    if (state.compact) {
+      // Mode ringkas: satu daftar kartu, urut status lalu aktivitas.
+      box.className = "list";
+      box.setAttribute("aria-label", "Daftar task");
+      const order = {};
+      columnsFor().forEach((k, i) => { order[k] = i; });
+      const sorted = shown.slice().sort((a, b) => {
+        const d = (order[a.status] === undefined ? 99 : order[a.status]) -
+                  (order[b.status] === undefined ? 99 : order[b.status]);
+        if (d) return d;
+        return Number(activityAt(b) || 0) - Number(activityAt(a) || 0);
+      });
+      const frag = document.createDocumentFragment();
+      for (const t of sorted) frag.appendChild(cardEl(t));
+      box.appendChild(frag);
+      paintNote();
+      return;
+    }
+
+    box.className = "cols";
+    box.setAttribute("aria-label", "Kolom papan kanban");
     const buckets = {};
     for (const key of columnsFor()) buckets[key] = [];
     for (const t of state.tasks) {
@@ -773,8 +1372,9 @@
     }
 
     const frag = document.createDocumentFragment();
-    for (const key of columnsFor()) {
-      const tasks = buckets[key] || [];
+    for (const key of cols) {
+      const all = buckets[key] || [];
+      const tasks = all.filter((t) => matches(t));
       const col = el("section", "col");
       col.dataset.status = key;
 
@@ -783,19 +1383,30 @@
       sw.style.background = statusInfo(key).color;
       head.appendChild(sw);
       head.appendChild(el("span", "nm", label(key)));
-      head.appendChild(el("span", "ct", String(tasks.length)));
+      const count = el("span", "ct", String(tasks.length));
+      if (tasks.length !== all.length) count.title = tasks.length + " dari " + all.length + " task (difilter)";
+      head.appendChild(count);
+      const add = el("button", "cadd", "+");
+      add.type = "button";
+      add.title = "Task baru di " + label(key);
+      add.setAttribute("aria-label", "Task baru di kolom " + label(key));
+      add.onclick = () => createTask({ target: key });
+      head.appendChild(add);
       col.appendChild(head);
 
       const body = el("div", "colBody");
-      const visible = state.filter ? tasks.filter((t) => t.status === state.filter) : tasks;
-      if (!visible.length) {
-        body.appendChild(el("div", "colEmpty",
-          state.filter && tasks.length ? "Disaring (" + tasks.length + " task)" :
+      if (!tasks.length) {
+        const hint = el("div", "colEmpty");
+        hint.appendChild(document.createTextNode(
+          all.length ? "Disaring (" + all.length + " task)" :
           key === "triage" ? "Belum ada task triage" :
           key === "todo" ? "Menunggu induk selesai" :
-          "Tarik kartu ke sini"));
+          key === "running" ? "Tidak ada worker berjalan" :
+          "Belum ada task"));
+        hint.appendChild(el("span", "dd", "Kartu bisa ditarik ke sini, atau pakai ⋯ di kartu"));
+        body.appendChild(hint);
       } else {
-        for (const t of visible) body.appendChild(cardEl(t));
+        for (const t of tasks) body.appendChild(cardEl(t));
       }
       col.appendChild(body);
 
@@ -805,9 +1416,14 @@
         const src = taskById(state.dragId);
         if (!src) return;
         const plan = transitionFor(src.status, key);
-        if (plan.error) { e.dataTransfer.dropEffect = "none"; return; }
+        if (plan.error) {
+          col.classList.add("nodrop");
+          try { e.dataTransfer.dropEffect = "none"; } catch {}
+          return;
+        }
         e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
+        col.classList.remove("nodrop");
+        try { e.dataTransfer.dropEffect = "move"; } catch {}
         col.classList.add("over");
       });
       col.addEventListener("dragleave", (e) => {
@@ -821,52 +1437,154 @@
         if (!src) return;
         const plan = transitionFor(src.status, key);
         if (plan.error) { toast(plan.error, "err"); return; }
-        runTransition(src, key, plan);
+        runTransition(src, key, plan, null);
       });
 
       frag.appendChild(col);
     }
     box.appendChild(frag);
+    // Paskan kolom ke lebar layar kalau masing-masing masih >= 185px.
+    box.style.setProperty("--n", String(cols.length));
+    const need = cols.length * 185 + (cols.length - 1) * 10;
+    box.classList.toggle("fit", need <= box.clientWidth);
+    paintNote();
   }
 
-  // ---------------- transisi (dipakai drag & tombol) ----------------
+  // ---------------- menu "Pindahkan ke…" ----------------
+  function closeMenu() {
+    if (!menuEl) return;
+    menuEl.remove();
+    menuEl = null;
+    document.removeEventListener("click", onMenuDismiss, true);
+    document.removeEventListener("keydown", onMenuKey, true);
+    window.removeEventListener("resize", closeMenu);
+    window.removeEventListener("scroll", closeMenu, true);
+  }
+
+  function onMenuDismiss(e) {
+    if (menuEl && !menuEl.contains(e.target)) closeMenu();
+  }
+  function onMenuKey(e) {
+    if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); closeMenu(); }
+  }
+
+  function openMoveMenu(task, anchor) {
+    closeMenu();
+    const menu = el("div", "menu");
+    menu.setAttribute("role", "menu");
+    menu.appendChild(el("div", "menuH", "Pindahkan ke…"));
+
+    const cols = columnsFor();
+    for (const key of cols) {
+      const plan = transitionFor(task.status, key);
+      const dis = !!plan.error;
+      const item = el(dis ? "div" : "button", "menuItem" + (dis ? " dis" : ""));
+      if (!dis) {
+        item.type = "button";
+        item.setAttribute("role", "menuitem");
+        item.onclick = guardMut((ev) => {
+          ev.stopPropagation();
+          closeMenu();
+          runTransition(task, key, plan, item);
+        });
+      } else {
+        item.setAttribute("aria-disabled", "true");
+        item.title = plan.error;
+      }
+      const name = el("span", "miName");
+      const sw = el("span", "swatch");
+      sw.style.background = statusInfo(key).color;
+      name.appendChild(sw);
+      name.appendChild(el("span", null, label(key)));
+      item.appendChild(name);
+      item.appendChild(el("span", "miAct", dis ? plan.error : plan.label));
+      menu.appendChild(item);
+    }
+    document.body.appendChild(menu);
+    menuEl = menu;
+
+    const r = anchor.getBoundingClientRect();
+    const w = menu.offsetWidth;
+    const h = menu.offsetHeight;
+    let left = Math.min(r.left, window.innerWidth - w - 8);
+    left = Math.max(8, left);
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    menu.style.left = left + "px";
+    menu.style.top = top + "px";
+
+    setTimeout(() => {
+      document.addEventListener("click", onMenuDismiss, true);
+      document.addEventListener("keydown", onMenuKey, true);
+      window.addEventListener("resize", closeMenu);
+      window.addEventListener("scroll", closeMenu, true);
+    }, 0);
+    const first = menu.querySelector("button");
+    if (first) first.focus();
+  }
+
+  // ---------------- transisi (dipakai drag, menu, tombol) ----------------
   // Satu sumber kebenaran untuk "pindah kolom ini jadi aksi apa". Drop yang tidak
   // masuk akal ditolak dengan pesan, bukan gagal diam-diam.
   function transitionFor(from, to) {
     if (from === to) return { error: "Kartu sudah ada di kolom " + label(to) + "." };
     if (from === "archived") return { error: "Task sudah diarsipkan." };
     if (from === "running") {
-      return { error: "Task sedang dijalankan worker — pindahkan lewat tombol di detail " +
-        "(Block/Complete) supaya run worker-nya ikut ditutup." };
+      return { error: "Task sedang dijalankan worker — pakai Block/Complete di detail supaya run worker ikut ditutup." };
     }
     if (to === "triage") {
       return { error: "Triage hanya untuk task baru. Untuk mengembalikan task, pakai Block atau Reopen review." };
     }
     if (to === "todo") {
-      return { error: "Todo berarti menunggu induk (dependency), bukan aksi manual. " +
-        "Pakai Block dengan jenis dependency bila perlu." };
+      return { error: "Todo berarti menunggu induk (dependency), bukan aksi manual. Pakai Block jenis dependency." };
     }
     if (to === "ready") {
       if (from === "review") return { action: "reopen", label: "Reopen review" };
       if (from === "todo" || from === "blocked") return { action: "promote", label: "Promote" };
+      if (from === "done") return { error: "Task selesai tidak bisa dikembalikan ke Ready (CLI tidak punya verb pembatalan)." };
       return { error: "Dari " + label(from) + " tidak ada aksi menuju Ready." };
     }
     if (to === "blocked") {
       if (from === "done") return { error: "Task yang sudah selesai tidak bisa di-block." };
-      return { action: "block", needsReason: true, label: "Block" };
+      return { action: "block", needsReason: true, label: "Block (butuh alasan)" };
     }
     if (to === "done") {
       if (from === "triage") return { error: "Task triage belum punya spesifikasi; selesaikan triage dulu." };
-      return { action: "complete", needsResult: true, label: "Complete" };
+      return { action: "complete", needsResult: true, label: "Complete (butuh bukti hasil)" };
     }
     if (to === "review") {
-      if (from !== "ready") return { error: "Request review hanya dari Ready (atau Running via detail)." };
+      if (from !== "ready" && from !== "running") return { error: "Request review hanya dari Ready (atau Running lewat detail)." };
       return { action: "review", label: "Request review" };
     }
     return { error: "Belum ada aksi untuk pindah ke " + label(to) + "." };
   }
 
-  async function runTransition(task, to, plan) {
+  // Urungkan: hanya ada kalau CLI punya verb kebalikannya. `complete` dan `archive`
+  // tidak punya verb pembatalan (dibuktikan: promote/unblock/reopen ditolak untuk
+  // status done, dan arsip tidak bisa dibalik), jadi jalan pemulihannya adalah
+  // membuat ulang task dengan isi yang sama.
+  function undoFor(action, task) {
+    if (action === "block") {
+      return {
+        label: "Urungkan block",
+        run: () => act("unblock", { id: task.id, reason: "Urungkan block lewat Papan Kanban." }, null, null),
+      };
+    }
+    if (action === "complete" || action === "archive") {
+      const detail = state.detail && state.detail.id === task.id ? state.detail : null;
+      return {
+        label: "Buat ulang task",
+        run: () => createTask({ prefill: {
+          title: task.title,
+          body: detail ? (detail.body || "") : (task.body_preview || ""),
+          priority: task.priority,
+        } }),
+      };
+    }
+    return null;
+  }
+
+  async function runTransition(task, to, plan, trigger) {
     const payload = { id: task.id };
     if (plan.needsReason) {
       const v = await ask({
@@ -886,25 +1604,45 @@
         submit: "Block task",
         validate: (v) => (v.reason || "").trim() ? "" : "Alasan wajib diisi.",
       });
-      if (!v) return;
+      if (!v) return null;
       payload.reason = (v.reason || "").trim();
       payload.kind = v.kind;
     } else if (plan.needsResult) {
       const v = await ask({
         title: "Selesaikan: " + (task.title || task.id),
-        intro: "CLI kanban menolak task selesai tanpa bukti hasil. Tulis singkat apa yang dikerjakan/diverifikasi.",
+        intro: "CLI kanban menolak task selesai tanpa bukti hasil. Tulis singkat apa yang dikerjakan/diverifikasi.\nCatatan: complete tidak bisa dibatalkan dari sini — tidak ada verb pembatalannya.",
         fields: [{ name: "result", label: "Hasil", type: "textarea", rows: 3,
           value: "Selesai lewat Papan Kanban Web Chat.", maxlength: 4000 }],
         submit: "Tandai selesai",
         validate: (v) => (v.result || "").trim().length >= 3 ? "" : "Hasil minimal 3 karakter.",
       });
-      if (!v) return;
+      if (!v) return null;
       payload.result = (v.result || "").trim();
     }
-    await act(plan.action, payload);
+    return act(plan.action, payload, trigger, task);
   }
 
-  async function act(action, payload) {
+  function busyButton(btn, text) {
+    if (!btn || btn.tagName !== "BUTTON") return () => {};
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.classList.add("busy");
+    btn.textContent = text;
+    return () => {
+      btn.disabled = false;
+      btn.classList.remove("busy");
+      btn.textContent = orig;
+    };
+  }
+
+  async function act(action, payload, trigger, task) {
+    if (state.mutating) {
+      toast("Masih menyimpan aksi sebelumnya — tunggu sebentar.", "");
+      return null;
+    }
+    state.mutating++;
+    document.body.classList.add("mutating");
+    const restore = busyButton(trigger, "Menyimpan…");
     const body = Object.assign({ slug: state.slug, action }, payload);
     try {
       const res = await fetch("/api/agents/task-update", {
@@ -918,19 +1656,29 @@
         if (data && data.detail && data.detail !== data.error) msg += " — " + data.detail;
         throw new Error(msg);
       }
-      toast(data.message || ("Aksi " + action + " berhasil."), "ok");
       if (data.id) state.freshId = data.id;
+      if (state.detailId && state.detailId === (payload && payload.id)) {
+        if (data.task) {
+          state.detail = data.task;
+          renderDetail(data.task, { task: data.task });
+        }
+      }
       if (action === "archive") closeDetail();     // kartu sudah keluar dari papan
+      const undo = task ? undoFor(action, task) : null;
+      toast(data.message || ("Aksi " + action + " berhasil."), "ok", undo ? { action: undo } : {});
       await loadBoard().catch(() => {});
       paintUpdated(); paintError();
-      if (state.detailId && state.detailId === (payload && payload.id)) {
-        if (data.task) { state.detail = data.task; renderDetail(data.task, { task: data.task }); }
-        else await openDetail(state.detailId, null, true);
+      if (state.detailId && state.detailId === (payload && payload.id) && !data.task) {
+        await openDetail(state.detailId, null, true);
       }
       return data;
     } catch (e) {
       toast("Gagal: " + (e && e.message ? e.message : e), "err");
       return null;
+    } finally {
+      state.mutating--;
+      if (!state.mutating) document.body.classList.remove("mutating");
+      restore();
     }
   }
 
@@ -964,62 +1712,78 @@
     return wrap;
   }
 
+  // Aksi yang membuka dialog pun ditahan saat mutasi lain masih berjalan, supaya
+  // klik beruntun tidak menumpuk dialog lalu menembak dua mutasi.
+  function guardMut(fn) {
+    return (...args) => {
+      if (state.mutating) {
+        toast("Masih menyimpan aksi sebelumnya — tunggu sebentar.", "");
+        return undefined;
+      }
+      return fn(...args);
+    };
+  }
+
   function actionButton(text, cls, fn, title) {
     const b = el("button", "btn sm" + (cls ? " " + cls : ""), text);
     b.type = "button";
+    b.dataset.mut = "1";
     if (title) b.title = title;
-    b.onclick = fn;
+    b.onclick = guardMut(() => fn(b));
     return b;
   }
 
-  function detailActions(task) {
-    const box = el("div", "acts");
+  function bigButton(text, cls, fn, title) {
+    const b = el("button", "btn big" + (cls ? " " + cls : ""), text);
+    b.type = "button";
+    b.dataset.mut = "1";
+    if (title) b.title = title;
+    b.onclick = guardMut(() => fn(b));
+    return b;
+  }
+
+  function sheetSummary(task) {
+    const row = el("div", "shSum");
+    const put = (labelText, value) => {
+      const item = el("span");
+      item.appendChild(el("span", null, labelText + ": "));
+      item.appendChild(el("span", "v", value));
+      row.appendChild(item);
+    };
+    put("Status", label(task.status));
+    put("Assignee", task.assignee || "belum ada");
+    put("Prioritas", PRIORITY_LABEL[Number(task.priority || 0)] || ("P" + (task.priority || 0)));
+    put("Umur", rel(task.created_at));
+    if (task.started_at) put("Mulai", rel(task.started_at));
+    if (task.completed_at) put("Selesai", rel(task.completed_at));
+    if (task.comment_count !== undefined) put("Komentar", String(task.comment_count));
+    const idRow = el("span", "idrow");
+    idRow.appendChild(el("span", null, "ID: "));
+    idRow.appendChild(el("code", null, task.id));
+    const cp = el("button", "mini", "salin id");
+    cp.type = "button";
+    cp.dataset.orig = "salin id";
+    cp.onclick = () => copyText(task.id, cp);
+    idRow.appendChild(cp);
+    row.appendChild(idRow);
+    return row;
+  }
+
+  function mainActions(task) {
+    const box = el("div", "acts primary");
     const id = task.id;
     const status = task.status;
-
-    box.appendChild(actionButton("Assign", "", async () => {
-      const names = state.assignees.map((a) => ({ value: a.name, label: a.name }));
-      if (!names.length) { toast("Belum ada profil assignee.", "err"); return; }
-      const v = await ask({
-        title: "Assign task",
-        intro: task.assignee ? "Sekarang: " + task.assignee : "Task ini belum punya assignee.",
-        fields: [{ name: "assignee", label: "Profil worker", type: "select",
-          value: task.assignee || (names[0] && names[0].value),
-          options: names.concat([{ value: "none", label: "(lepas assignee)" }]) }],
-        submit: "Assign",
-      });
-      if (!v) return;
-      await act("assign", { id, assignee: v.assignee });
-    }, "Pilih profil yang menjalankan task ini"));
-
-    box.appendChild(actionButton("Set model", "", async () => {
-      const v = await ask({
-        title: "Set model worker",
-        intro: "Override model untuk dispatch berikutnya. Isi 'none' untuk melepas.",
-        fields: [{ name: "model", label: "Model", type: "text", value: "",
-          placeholder: "mis. deepseek-v4.1-flash",
-          hint: "Isi 'none' untuk melepas override model task ini." }],
-        submit: "Simpan model",
-        validate: (x) => (x.model || "").trim() ? "" : "Model wajib diisi (atau 'none').",
-      });
-      if (!v) return;
-      await act("set-model", { id, model: (v.model || "").trim() });
-    }));
-
     if (status === "todo" || status === "blocked") {
-      box.appendChild(actionButton("Promote", "primary", () => act("promote", { id }), 
+      box.appendChild(bigButton("Promote ke Ready", "primary",
+        (b) => act("promote", { id }, b, task),
         "Masukkan ke Ready — dispatcher gateway akan menjalankan worker"));
     }
     if (status === "blocked") {
-      box.appendChild(actionButton("Unblock", "", async () => {
-        const v = await ask({ title: "Buka block", fields: [
-          { name: "reason", label: "Catatan (opsional)", type: "text", maxlength: 500 }], submit: "Unblock" });
-        if (v === null) return;
-        await act("unblock", { id, reason: (v.reason || "").trim() });
-      }));
+      box.appendChild(bigButton("Unblock", "",
+        (b) => act("unblock", { id, reason: "Dibuka lewat Papan Kanban." }, b, task)));
     }
-    if (["ready", "todo", "triage"].includes(status)) {
-      box.appendChild(actionButton("Block", "danger", async () => {
+    if (["ready", "todo", "triage", "review"].includes(status)) {
+      box.appendChild(bigButton("Block…", "danger", async (b) => {
         const v = await ask({
           title: "Block task", fields: [
             { name: "reason", label: "Alasan", type: "textarea", required: true, maxlength: 500 },
@@ -1032,11 +1796,11 @@
           validate: (x) => (x.reason || "").trim() ? "" : "Alasan wajib diisi.",
         });
         if (!v) return;
-        await act("block", { id, reason: (v.reason || "").trim(), kind: v.kind });
-      }));
+        await act("block", { id, reason: (v.reason || "").trim(), kind: v.kind }, b, task);
+      }, "Hentikan task dengan alasan"));
     }
     if (status !== "done" && status !== "archived") {
-      box.appendChild(actionButton("Complete", "", async () => {
+      box.appendChild(bigButton("Complete…", "", async (b) => {
         const v = await ask({
           title: "Tandai selesai",
           intro: status === "running"
@@ -1048,11 +1812,11 @@
           validate: (x) => (x.result || "").trim().length >= 3 ? "" : "Hasil minimal 3 karakter.",
         });
         if (!v) return;
-        await act("complete", { id, result: (v.result || "").trim(), force: status === "running" });
-      }));
+        await act("complete", { id, result: (v.result || "").trim(), force: status === "running" }, b, task);
+      }, "Tandai task selesai"));
     }
-    if (status === "running" || status === "ready") {
-      box.appendChild(actionButton("Request review", "", async () => {
+    if (status === "ready" || status === "running") {
+      box.appendChild(bigButton("Request review", "", async (b) => {
         const v = await ask({
           title: "Minta review",
           intro: "Ringkas apa yang sudah dikerjakan dan bagaimana diverifikasi.",
@@ -1060,25 +1824,90 @@
           submit: "Request review",
         });
         if (!v) return;
-        await act("review", { id, summary: (v.summary || "").trim(), force: status === "running" });
+        await act("review", { id, summary: (v.summary || "").trim(), force: status === "running" }, b, task);
       }));
     }
     if (status === "review") {
-      box.appendChild(actionButton("Reopen review", "", async () => {
+      box.appendChild(bigButton("Reopen review", "", async (b) => {
         const v = await ask({ title: "Kembalikan ke pengerjaan", fields: [
           { name: "reason", label: "Alasan", type: "textarea", rows: 2, maxlength: 500 }], submit: "Reopen" });
         if (!v) return;
-        await act("reopen", { id, reason: (v.reason || "").trim() });
+        await act("reopen", { id, reason: (v.reason || "").trim() }, b, task);
       }));
     }
-    box.appendChild(actionButton("Komentar", "", async () => {
+    if (!box.childNodes.length) return null;
+    return box;
+  }
+
+  function movesSection(task) {
+    const sec = section("Pindahkan ke…");
+    const list = el("div", "moves");
+    for (const key of columnsFor()) {
+      const plan = transitionFor(task.status, key);
+      const b = el("button", "mv");
+      b.type = "button";
+      const nm = el("span", "mvName");
+      const sw = el("span", "swatch");
+      sw.style.background = statusInfo(key).color;
+      nm.appendChild(sw);
+      nm.appendChild(el("span", null, label(key)));
+      b.appendChild(nm);
+      if (plan.error) {
+        b.disabled = true;
+        b.title = plan.error;
+        b.appendChild(el("span", "mvWhy", plan.error));
+      } else {
+        b.dataset.mut = "1";
+        b.appendChild(el("span", "mvWhy", plan.label));
+        b.onclick = guardMut(() => runTransition(task, key, plan, b));
+      }
+      list.appendChild(b);
+    }
+    sec.appendChild(list);
+    return sec;
+  }
+
+  function secondaryActions(task) {
+    const box = el("div", "acts");
+    const id = task.id;
+    box.appendChild(actionButton("Assign", "", async (b) => {
+      const names = state.assignees.map((a) => ({ value: a.name, label: a.name }));
+      if (!names.length) { toast("Belum ada profil assignee.", "err"); return; }
+      const v = await ask({
+        title: "Assign task",
+        intro: task.assignee ? "Sekarang: " + task.assignee : "Task ini belum punya assignee.",
+        fields: [{ name: "assignee", label: "Profil worker", type: "select",
+          value: task.assignee || (names[0] && names[0].value),
+          options: names.concat([{ value: "none", label: "(lepas assignee)" }]) }],
+        submit: "Assign",
+      });
+      if (!v) return;
+      await act("assign", { id, assignee: v.assignee }, b, task);
+    }, "Pilih profil yang menjalankan task ini"));
+
+    box.appendChild(actionButton("Set model", "", async (b) => {
+      const v = await ask({
+        title: "Set model worker",
+        intro: "Override model untuk dispatch berikutnya. Isi 'none' untuk melepas.",
+        fields: [{ name: "model", label: "Model", type: "text", value: "",
+          placeholder: "mis. deepseek-v4.1-flash",
+          hint: "Isi 'none' untuk melepas override model task ini." }],
+        submit: "Simpan model",
+        validate: (x) => (x.model || "").trim() ? "" : "Model wajib diisi (atau 'none').",
+      });
+      if (!v) return;
+      await act("set-model", { id, model: (v.model || "").trim() }, b, task);
+    }));
+
+    box.appendChild(actionButton("Komentar", "", async (b) => {
       const v = await ask({ title: "Tambah komentar", fields: [
         { name: "text", label: "Komentar", type: "textarea", rows: 3, required: true, maxlength: 8000 }],
         submit: "Kirim", validate: (x) => (x.text || "").trim() ? "" : "Komentar wajib diisi." });
       if (!v) return;
-      await act("comment", { id, text: (v.text || "").trim() });
+      await act("comment", { id, text: (v.text || "").trim() }, b, task);
     }));
-    box.appendChild(actionButton("Edit", "", async () => {
+
+    box.appendChild(actionButton("Edit", "", async (b) => {
       const detail = (state.detail && state.detail.id === id) ? state.detail : null;
       const v = await ask({
         title: "Edit task", fields: [
@@ -1089,31 +1918,49 @@
         validate: (x) => (x.title || "").trim() ? "" : "Judul wajib diisi.",
       });
       if (!v) return;
-      await act("edit", { id, title: (v.title || "").trim(), body: v.body || "" });
+      await act("edit", { id, title: (v.title || "").trim(), body: v.body || "" }, b, task);
     }));
-    box.appendChild(actionButton("Arsipkan", "danger", async () => {
+
+    box.appendChild(actionButton("Arsipkan", "danger", async (b) => {
       const ok = await confirmAsk("Arsipkan task?",
-        "Task tidak dihapus — hanya dikeluarkan dari papan (masih ada di kanban.db).",
+        "Task tidak dihapus — hanya dikeluarkan dari papan (masih ada di kanban.db). Arsip juga tidak bisa dibatalkan dari UI ini.",
         "Arsipkan");
       if (!ok) return;
-      await act("archive", { id });
+      await act("archive", { id }, b, task);
     }, "Arsipkan task (bukan hapus)"));
 
     return box;
   }
 
-  function transitionsRow(task) {
-    const box = el("div", "acts");
-    const cols = columnsFor();
-    for (const key of cols) {
-      const plan = transitionFor(task.status, key);
-      if (plan.error) continue;
-      box.appendChild(actionButton("→ " + label(key) + " (" + plan.label + ")", "", () => {
-        runTransition(task, key, plan);
-      }));
+  function timeline(detailTask) {
+    const items = [];
+    for (const c of (detailTask.comments || [])) {
+      items.push({ kind: "cmt", at: Number(c.created_at || 0), author: c.author, text: c.body });
     }
-    if (!box.childNodes.length) return el("div", "muted", "Tidak ada perpindahan kolom yang masuk akal dari status ini.");
-    return box;
+    for (const ev of (detailTask.events || [])) {
+      items.push({ kind: "ev", at: Number(ev.created_at || 0), author: "", text: ev.kind });
+    }
+    items.sort((a, b) => b.at - a.at);
+    const wrap = el("div", "tl");
+    if (!items.length) {
+      wrap.appendChild(el("div", "muted", "Belum ada komentar atau event."));
+      return wrap;
+    }
+    for (const it of items.slice(0, 40)) {
+      const row = el("div", "it " + it.kind);
+      const head = el("div", "h");
+      if (it.kind === "cmt") {
+        head.appendChild(el("b", null, it.author || "-"));
+        head.appendChild(el("span", null, "komentar"));
+      } else {
+        head.appendChild(el("b", null, it.text || "event"));
+      }
+      head.appendChild(el("span", null, rel(it.at)));
+      row.appendChild(head);
+      if (it.kind === "cmt") row.appendChild(el("div", "b", it.text || ""));
+      wrap.appendChild(row);
+    }
+    return wrap;
   }
 
   function renderDetail(task, extra) {
@@ -1122,44 +1969,46 @@
     state.detail = (extra && extra.task) ? extra.task : null;
     $("sheetTitle").textContent = task.title || "(tanpa judul)";
 
-    body.appendChild(detailActions(task));
+    const top = el("div", "shTop");
+    top.appendChild(statusBadge(task.status));
+    const pr = Number(task.priority || 0);
+    if (pr > 0) top.appendChild(el("span", "prio p" + pr, PRIORITY_LABEL[pr] || ("P" + pr)));
+    if (task.status === "blocked" && task.block_kind) top.appendChild(el("span", "tag warn", task.block_kind));
+    if (task.workspace_kind) top.appendChild(el("span", "tag", "workspace: " + task.workspace_kind));
+    body.appendChild(top);
 
-    const s0 = section("Pindah kolom (fallback sentuh)");
-    s0.appendChild(transitionsRow(task));
-    body.appendChild(s0);
+    body.appendChild(sheetSummary(task));
 
-    const s1 = section("Status");
-    s1.appendChild(kv([
-      ["Status", label(task.status)],
-      ["Agent", task.assignee || "-"],
-      ["ID", task.id],
-      ["Prioritas", task.priority || 0],
-      ["Dibuat", rel(task.created_at)],
-      ["Mulai", task.started_at ? rel(task.started_at) : ""],
-      ["Selesai", task.completed_at ? rel(task.completed_at) : ""],
-    ]));
+    const primary = mainActions(task);
+    if (primary) body.appendChild(primary);
+
+    body.appendChild(movesSection(task));
+
+    body.appendChild(secondaryActions(task));
+
     if (task.status === "running") {
-      s1.appendChild(kv([
-        ["Worker", "PID " + (task.worker_pid || "-") + (task.worker_alive ? " (hidup)" : " (tidak ditemukan)")],
+      const s = section("Worker");
+      s.appendChild(kv([
+        ["PID", String(task.worker_pid || "-") + (task.worker_alive ? " (hidup)" : " (tidak ditemukan)")],
         ["Heartbeat", task.last_heartbeat_at ? rel(task.last_heartbeat_at) : ""],
       ]));
+      body.appendChild(s);
     }
-    if (task.block_kind) s1.appendChild(kv([["Menunggu", task.block_kind]]));
     if (task.last_failure_error) {
+      const s = section("Kegagalan terakhir");
       const fail = el("div", "mono");
       fail.textContent = task.last_failure_error;
-      s1.appendChild(fail);
+      s.appendChild(fail);
+      body.appendChild(s);
     }
-    body.appendChild(s1);
 
     if (task.workspace_path) {
       const s2 = section("Workspace");
       s2.appendChild(pathRow(task.workspace_path));
-      s2.appendChild(el("div", "muted", "jenis: " + (task.workspace_kind || "-")));
       body.appendChild(s2);
     }
 
-    const s3 = section("Ringkasan");
+    const s3 = section("Deskripsi");
     const detailTask = (extra && extra.task) ? extra.task : null;
     const preview = detailTask ? (detailTask.body || "") : (task.body_preview || "");
     s3.appendChild(el("pre", "body", preview || "(body kosong)"));
@@ -1171,35 +2020,9 @@
     body.appendChild(s3);
 
     if (detailTask) {
-      const sc = section("Komentar (" + (detailTask.comment_count || 0) + " total)");
-      if (!detailTask.comments || !detailTask.comments.length) {
-        sc.appendChild(el("div", "muted", "Belum ada komentar di task ini."));
-      } else {
-        for (const c of detailTask.comments) {
-          const box = el("div", "cmt");
-          const head = el("div", "h");
-          head.appendChild(el("b", null, c.author || "-"));
-          head.appendChild(el("span", null, rel(c.created_at)));
-          box.appendChild(head);
-          box.appendChild(el("div", "b", c.body || ""));
-          sc.appendChild(box);
-        }
-      }
+      const sc = section("Aktivitas (komentar & event)");
+      sc.appendChild(timeline(detailTask));
       body.appendChild(sc);
-
-      const se = section("Event terakhir");
-      if (!detailTask.events || !detailTask.events.length) {
-        se.appendChild(el("div", "muted", "Belum ada event."));
-      } else {
-        for (const ev of detailTask.events.slice(-10).reverse()) {
-          const line = el("div", "ev");
-          line.appendChild(el("b", null, ev.kind || "-"));
-          line.appendChild(document.createTextNode(" · " + rel(ev.created_at)));
-          if (ev.payload_preview) line.appendChild(document.createTextNode(" · " + ev.payload_preview));
-          se.appendChild(line);
-        }
-      }
-      body.appendChild(se);
 
       if (detailTask.runs && detailTask.runs.length) {
         const sr = section("Run worker");
@@ -1214,16 +2037,20 @@
         body.appendChild(sr);
       }
     } else {
-      const sl = section("Memuat…");
+      const sl = section("Menyiapkan detail");
+      const sk = el("div");
+      sk.appendChild(el("div", "sk", ""));
+      sl.appendChild(sk);
+      sl.querySelector(".sk").style.height = "54px";
       sl.appendChild(el("div", "muted", "Mengambil body penuh, komentar, dan event…"));
       body.appendChild(sl);
     }
 
     const sr2 = section("Hubungan task");
-    const linked = el("div", "kv");
-    linked.appendChild(el("span", null, "induk: " + ((task.parents || []).join(", ") || "-")));
-    linked.appendChild(el("span", null, "lanjutan: " + ((task.children || []).join(", ") || "-")));
-    sr2.appendChild(linked);
+    sr2.appendChild(kv([
+      ["induk", (task.parents || []).join(", ") || "-"],
+      ["lanjutan", (task.children || []).join(", ") || "-"],
+    ]));
     body.appendChild(sr2);
   }
 
@@ -1238,11 +2065,12 @@
     try {
       const data = await fetchJSON("/api/agents/task?slug=" + encodeURIComponent(state.slug) +
                                    "&id=" + encodeURIComponent(id));
-      if (data && data.task) {
+      if (data && data.task && state.detailId === id) {
         renderDetail(data.task, data);
         $("sheetBody").scrollTop = scrollTop;
       }
     } catch (e) {
+      if (state.detailId !== id) return;
       const s = section("Gagal memuat detail");
       s.appendChild(el("div", "muted", e && e.message ? e.message : String(e)));
       $("sheetBody").appendChild(s);
@@ -1259,23 +2087,55 @@
   }
 
   // ---------------- aksi board ----------------
-  async function createTask() {
+  async function createTask(opts) {
+    opts = opts || {};
+    const target = opts.target || (opts.prefill && opts.prefill.status) || "ready";
+    if (target === "todo") {
+      await ask({
+        title: "Task baru di Todo",
+        intro: "Kolom Todo tidak bisa diisi langsung: task lahir di Todo hanya kalau punya induk yang belum selesai " +
+               "(dependency). Buat task biasa dulu, lalu tautkan sebagai anak, atau pakai Block dengan jenis dependency.",
+        fields: [],
+        submit: "Mengerti",
+        cancelLabel: "Tutup",
+      });
+      return;
+    }
+    if (target === "running") {
+      await ask({
+        title: "Task baru di Running",
+        intro: "Running hanya diisi worker yang benar-benar berjalan. Buat task di Ready dan biarkan dispatcher gateway " +
+               "yang mengambilnya — kartu akan berpindah ke Running sendiri.",
+        fields: [],
+        submit: "Mengerti",
+        cancelLabel: "Tutup",
+      });
+      return;
+    }
     if (!state.assignees.length) await loadAssignees(true);
     const names = state.assignees.map((a) => ({ value: a.name, label: a.name }));
-    const defaultAssignee = names.some((n) => n.value === "default") ? "default" :
-                            (names[0] ? names[0].value : "");
+    const prefill = opts.prefill || {};
+    const chained = target !== "ready" && target !== "triage";
+    const defaultAssignee = chained ? "" :
+      (names.some((n) => n.value === "default") ? "default" : (names[0] ? names[0].value : ""));
+    const chainNote = chained
+      ? "Task dibuat di Ready lalu langsung dipindahkan ke " + label(target) + "."
+      : "Task masuk Ready dan langsung diambil dispatcher gateway.";
     const v = await ask({
-      title: "Task baru",
-      intro: state.assigneeNote || "Task masuk Ready (kecuali dicentang Triage) dan langsung diambil dispatcher gateway.",
+      title: target === "triage" ? "Task baru di Triage" : "Task baru",
+      intro: (state.assigneeNote ? state.assigneeNote + "\n" : "") + chainNote,
       fields: [
         { name: "title", label: "Judul", type: "text", required: true, maxlength: 200,
+          value: prefill.title || "",
           placeholder: "mis. Buat file hello.txt berisi halo" },
         { name: "body", label: "Deskripsi", type: "textarea", rows: 4, maxlength: 20000,
+          value: prefill.body || "",
           placeholder: "Konteks, batasan, dan cara verifikasi…" },
-        { name: "assignee", label: "Assignee", type: "select", value: defaultAssignee,
+        { name: "assignee", label: "Assignee", type: "select", value: prefill.assignee || defaultAssignee,
           options: [{ value: "", label: "(tanpa assignee — tidak dijalankan)" }].concat(names),
-          hint: names.length === 1 ? "Hanya ada satu profil worker; worker dijalankan oleh profil itu." : "" },
-        { name: "priority", label: "Prioritas", type: "select", value: "0",
+          hint: chained ? "Dikosongkan supaya dispatcher tidak menjalankannya sebelum dipindah." :
+            (names.length === 1 ? "Hanya ada satu profil worker; worker dijalankan oleh profil itu." : "") },
+        { name: "priority", label: "Prioritas", type: "select", value: String(prefill.priority || 0),
           options: [0,1,2,3,4,5].map((n) => ({ value: String(n), label: PRIORITY_LABEL[n] })) },
         { name: "workspace", label: "Workspace", type: "select", value: "scratch",
           options: [
@@ -1285,7 +2145,7 @@
           ] },
         { name: "path", label: "Path (untuk dir)", type: "text", value: "",
           placeholder: "/root/proyek", hint: "Wajib path absolut kalau workspace = dir." },
-        { name: "triage", label: "Parkir di Triage (spesifikasi belum jelas)", type: "checkbox", value: false },
+        { name: "triage", label: "Parkir di Triage (spesifikasi belum jelas)", type: "checkbox", value: target === "triage" },
       ],
       submit: "Buat task",
       validate: (x) => {
@@ -1326,8 +2186,21 @@
         card.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
         setTimeout(() => { state.freshId = ""; card.classList.remove("new"); }, 1800);
       }
+      if (data.id) await applyCreateTarget(data.id, target, body.title);
     } catch (e) {
       toast("Gagal membuat task: " + (e && e.message ? e.message : e), "err");
+    }
+  }
+
+  // Setelah `create`, kolom tujuan (selain Ready/Triage) dicapai lewat aksi baku.
+  async function applyCreateTarget(id, target, title) {
+    if (target === "done") {
+      await act("complete", { id, result: "Dibuat sebagai selesai lewat Papan Kanban." }, null, { id, title });
+    } else if (target === "blocked") {
+      await act("block", { id, reason: "Ditandai blocked saat pembuatan lewat Papan Kanban.", kind: "needs_input" },
+        null, { id, title });
+    } else if (target === "review") {
+      await act("review", { id, summary: "Dibuat untuk direview lewat Papan Kanban." }, null, { id, title });
     }
   }
 
@@ -1358,7 +2231,7 @@
       toast(data.message || "Board dibuat.", "ok");
       await loadBoards();
       state.slug = (data.board && data.board.slug) || state.slug;
-      try { localStorage.setItem(LS, state.slug); } catch {}
+      try { localStorage.setItem(LS_BOARD, state.slug); } catch {}
       renderBoards();
       await loadBoard().catch(() => {});
       paintUpdated(); paintError();
@@ -1393,28 +2266,124 @@
     }
   }
 
+  function showShortcuts() {
+    const wrap = el("div", "kbdList");
+    const rows = [
+      ["n", "Task baru"],
+      ["/", "Fokus ke kotak pencarian"],
+      ["Esc", "Tutup modal, menu, atau detail"],
+      ["?", "Daftar pintasan ini"],
+      ["Tab + Enter", "Buka kartu / jalankan tombol"],
+    ];
+    for (const [key, text] of rows) {
+      const r = el("div", "r");
+      r.appendChild(el("kbd", null, key));
+      r.appendChild(el("span", null, text));
+      wrap.appendChild(r);
+    }
+    return ask({ title: "Pintasan papan", body: wrap, fields: [], submit: "Tutup", cancelLabel: "Tutup" });
+  }
+
   // ---------------- interaksi global ----------------
+  function readFiltersIntoDOM() {
+    $("q").value = state.q;
+    $("fPrio").value = state.prio;
+    $("fRun").checked = state.runningOnly;
+  }
+
+  function fillPriorityOptions() {
+    const sel = $("fPrio");
+    for (let n = 0; n <= 5; n++) {
+      const op = el("option", null, "Prioritas " + PRIORITY_LABEL[n]);
+      op.value = String(n);
+      sel.appendChild(op);
+    }
+  }
+
   $("refresh").onclick = () => refresh(true);
-  $("newTask").onclick = createTask;
+  $("newTask").onclick = () => createTask({});
   $("newBoard").onclick = createBoard;
   $("dispatchPrev").onclick = dispatchPreview;
+  $("colBtn").onclick = openColumnPicker;
   $("sheetClose").onclick = closeDetail;
   $("sheetBg").onclick = closeDetail;
+  $("fReset").onclick = resetFilters;
   $("boardSel").onchange = (e) => {
     state.slug = e.target.value;
     state.filter = null;
     state.chipEls = null;
-    try { localStorage.setItem(LS, state.slug); } catch {}
+    try { localStorage.setItem(LS_BOARD, state.slug); } catch {}
     refresh(true);
   };
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !$("sheetWrap").hidden && !document.querySelector(".modalWrap")) closeDetail();
+
+  let searchTimer = null;
+  $("q").addEventListener("input", (e) => {
+    state.q = e.target.value;
+    saveFilters();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { paintChips(); renderBoard(); }, 120);
   });
+  $("fWho").addEventListener("change", (e) => {
+    state.who = e.target.value;
+    saveFilters(); paintChips(); renderBoard();
+  });
+  $("fPrio").addEventListener("change", (e) => {
+    state.prio = e.target.value;
+    saveFilters(); paintChips(); renderBoard();
+  });
+  $("fRun").addEventListener("change", (e) => {
+    state.runningOnly = e.target.checked;
+    saveFilters(); paintChips(); renderBoard();
+  });
+
+  // Keyboard: capture phase, supaya Esc milik modal menang lebih dulu.
+  document.addEventListener("keydown", (e) => {
+    const t = e.target;
+    const typing = !!(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable));
+    if (e.key === "Escape") {
+      if (document.querySelector(".modalWrap")) return;      // modal menutup dirinya
+      if (menuEl) { closeMenu(); return; }
+      if (!$("sheetWrap").hidden) { closeDetail(); return; }
+      if (typing && t.blur) t.blur();
+      return;
+    }
+    if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (document.querySelector(".modalWrap")) return;
+    if (e.key === "n") { e.preventDefault(); createTask({}); }
+    else if (e.key === "/") {
+      e.preventDefault();
+      $("q").focus();
+      if ($("q").select) $("q").select();
+    } else if (e.key === "?") {
+      e.preventDefault();
+      showShortcuts();
+    }
+  }, true);
+
+  const mq = window.matchMedia("(max-width:760px)");
+  const onMq = () => {
+    const next = mq.matches;
+    if (next === state.compact) return;
+    state.compact = next;
+    closeMenu();
+    if (state.filter && !visibleCols().includes(state.filter)) state.filter = null;
+    if (state.loaded) { paintChips(); renderBoard(); }
+  };
+  state.compact = mq.matches;
+  if (mq.addEventListener) mq.addEventListener("change", onMq);
+  else if (mq.addListener) mq.addListener(onMq);
 
   setInterval(() => { if (!document.hidden) refresh(false); }, REFRESH_MS);
   setInterval(() => { if (!document.hidden && !state.error) paintUpdated(); }, 1000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(true); });
 
+  // ---------------- boot ----------------
+  fillPriorityOptions();
+  readCols();
+  readFilters();
+  readFiltersIntoDOM();
+  renderAssigneeFilter();
+  renderSkeleton();
   refresh(true);
 })();
 </script>

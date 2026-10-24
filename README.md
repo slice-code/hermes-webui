@@ -465,6 +465,52 @@ Chip ringkasan tetap ada (`Running n`, `Ready n`, …): ketuk = filter, ketuk la
 Indikator kanan atas tetap "diperbarui N dtk lalu" dengan titik hijau/merah; auto-refresh
 10 detik hanya saat tab terlihat.
 
+### Perilaku UI yang perlu diketahui
+
+- **Empty state memandu.** Board tanpa task tidak menampilkan tujuh kolom kosong, melainkan
+  panel tiga langkah (buat task → masuk Ready → dispatcher gateway menjalankan worker) plus
+  tombol besar **Buat task pertama**. Kalau yang kosong adalah hasil filter, panelnya lain:
+  daftar filter aktif + tombol **Reset filter**.
+- **Kolom bisa disembunyikan** lewat tombol **Kolom** (juga tersimpan per lebar layar di
+  `localStorage`). Layar lebar menampilkan semua kolom; layar sempit (< 760 px) default
+  menyembunyikan **Triage** dan **Done**, dan menyebutkan jumlah task yang tersembunyi di
+  baris ringkasan dengan tautan "tampilkan". Kalau semua kolom masih muat (≥ 185 px per
+  kolom), papan dipaskan selebar layar tanpa scroll horizontal sama sekali.
+- **Mode ringkas (< 760 px).** Bukan tujuh kolom horizontal: satu baris chip status
+  (dengan angka) yang berfungsi sebagai filter, lalu **daftar kartu satu kolom**.
+- **Cari & filter** di baris kedua: kotak cari (judul, assignee, **id**), filter assignee
+  (termasuk "tanpa assignee"), filter prioritas P0–P5, dan centang "hanya yang jalan"
+  (status Running atau worker hidup). Semuanya tersimpan di `localStorage`
+  (`hermes-agents-filter-v2`) dan ada tombol **Reset**; baris ringkasan menyebut
+  "menampilkan N dari M".
+- **Pindahkan ke…** ada di setiap kartu (tombol `⋯`) dan di detail sheet, sebagai pengganti
+  drag yang tidak andal di layar sentuh. Daftarnya memuat semua status; yang tidak sah
+  **dinonaktifkan beserta alasannya** (mis. Todo = menunggu induk, Running = dikerjakan
+  worker, Done dari Triage = spesifikasi belum ada). Drag tetap ada: kolom tujuan
+  menyala saat `dragover`, kolom yang menolak diberi tanda `nodrop`, kartu yang ditarik
+  memakai bayangan.
+- **Umpan balik aksi.** Setiap aksi async menonaktifkan tombolnya dan menulis
+  "Menyimpan…" (plus `body.mutating` yang mematikan seluruh tombol mutasi), jadi satu
+  klik tidak mungkin menembak dua mutasi. Toast memuat pesan asli dari CLI. **Urungkan**
+  tersedia selama 12 detik: `block` → `unblock` (benar-benar mengembalikan kartu).
+  `complete`/`archive` **tidak punya verb pembatalan** di CLI kanban (dibuktikan:
+  `promote`/`unblock`/`reopen-review` ditolak untuk status `done`), jadi tombolnya
+  berbunyi **Buat ulang task** dan membuat task baru dengan isi yang sama — bukan
+  berpura-pura membatalkan.
+- **Tombol `+` per kolom.** Triage/Ready membuka modal task baru dengan status itu; Done,
+  Blocked, dan Review membuat task lalu langsung memindahkannya (assignee dikosongkan
+  supaya dispatcher tidak menjalankannya di tengah jalan). Todo menampilkan penjelasan
+  bahwa kolom itu hanya lahir dari induk yang belum selesai.
+- **Pintasan keyboard:** `n` task baru, `/` fokus pencarian, `Esc` menutup modal/menu/sheet,
+  `?` daftar pintasan. Diabaikan saat fokus ada di input.
+- **Kartu** memakai judul maksimal dua baris (ellipsis), badge status berwarna (titik
+  berdenyut untuk Running), chip prioritas, inisial assignee, umur relatif, jumlah
+  komentar, dan grip `⠿` yang muncul saat hover sebagai petunjuk bisa ditarik.
+- **Muat pertama** memakai skeleton berdenyut, bukan teks "memuat…"; detail sheet juga
+  menyiapkan tempatnya sendiri. Detail sheet: ringkasan + tombol **salin id** di atas,
+  aksi utama sebagai tombol besar, lalu daftar **Pindahkan ke…**, aksi sekunder, dan
+  linimasa komentar/event dengan waktu relatif.
+
 ### Endpoint baca (lokal, bukan proxy)
 
 Dibaca langsung dari SQLite kanban (mode `ro`), tidak diteruskan ke gateway. Tetap wajib

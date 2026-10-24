@@ -183,3 +183,11 @@ html.lock, html.lock body{ overflow: hidden !important; }
   .tabbar{ display: none !important; }
   body.has-tabbar{ padding-bottom: 0; }
 }
+
+/* Hormati permintaan "kurangi gerak": hilangkan transisi shell mobile.
+   (Halaman punya aturan serupa untuk animasinya sendiri.) */
+@media (prefers-reduced-motion: reduce){
+  .tabbar, .panel, .modal.sheet-modal .modal-card, .app-fade, .sheet{
+    animation: none !important; transition: none !important;
+  }
+}

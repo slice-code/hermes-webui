@@ -864,6 +864,22 @@ KANBAN_ACTIONS = ("assign", "promote", "block", "unblock", "complete", "archive"
 KANBAN_BLOCK_KINDS = ("capability", "dependency", "needs_input", "transient")
 AGENT_WORKSPACE_KINDS = ("scratch", "worktree")
 
+# --- Otomasi (cron/skills/toolsets/status/artifact) -------------------------
+# Semua nilai dari klien divalidasi bentuknya SEBELUM ditempel ke path upstream:
+# id job cron selalu 12 hex, id sesi & artifact dibatasi karakter aman, jadi
+# tidak ada kesempatan menyelipkan "../" atau query tambahan ke URL gateway.
+JOB_ID_RE = re.compile(r"^[a-f0-9]{12}$")
+SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$")
+ARTIFACT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+JOB_MUTATION_RE = re.compile(r"^/api/jobs/([a-f0-9]{12})/(pause|resume|run)$")
+JOB_ITEM_RE = re.compile(r"^/api/jobs/([a-f0-9]{12})$")
+SESSION_ITEM_RE = re.compile(r"^/api/sessions/([^/]+)$")
+SESSION_ACTION_RE = re.compile(r"^/api/sessions/([^/]+)/(fork|model)$")
+ARTIFACT_DL_RE = re.compile(r"^/v1/artifacts/download/([A-Za-z0-9][A-Za-z0-9_.-]{0,127})$")
+ARTIFACT_MAX_BYTES = 16 * 1024 * 1024
+OTOMASI_JSON_MAX = 64 * 1024
+STARTED_AT = time.time()
+
 _assignee_lock = threading.Lock()
 _assignee_cache: dict = {"at": 0.0, "items": []}
 _mutate_lock = threading.Lock()
@@ -1855,6 +1871,91 @@ def _prune_old_webchat_images() -> None:
         pass
 
 
+# --- Otomasi: helper lokal (read-only) -------------------------------------
+
+_SKILL_FM_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.S)
+
+
+def _skill_frontmatter(path: Path) -> dict:
+    """Ambil name/description dari frontmatter SKILL.md — best-effort, tanpa YAML."""
+    try:
+        head = path.read_text(encoding="utf-8", errors="replace")[:4000]
+    except OSError:
+        return {}
+    match = _SKILL_FM_RE.match(head)
+    body = match.group(1) if match else ""
+    out: dict = {}
+    for line in body.splitlines():
+        key, sep, value = line.partition(":")
+        if not sep:
+            continue
+        key = key.strip().lower()
+        if key in ("name", "description") and key not in out:
+            out[key] = value.strip().strip('"').strip("'")
+    return out
+
+
+def local_skill_list() -> list:
+    """Daftar skill dari disk ($HERMES_HOME/skills/<kategori>/<nama>/SKILL.md).
+
+    Dipakai HANYA sebagai cadangan ketika `GET /v1/skills` gagal (build ini
+    mengembalikan 500 karena signature `_find_all_skills()` tidak cocok).
+    Bentuknya sengaja sama dengan respons gateway: {name, description, category}.
+    """
+    root = _hermes_root() / "skills"
+    items: list = []
+    if not root.is_dir():
+        return items
+    for skill_file in sorted(root.glob("*/*/SKILL.md")):
+        meta = _skill_frontmatter(skill_file)
+        name = meta.get("name") or skill_file.parent.name
+        items.append({
+            "name": name,
+            "description": meta.get("description") or "",
+            "category": skill_file.parent.parent.name,
+        })
+    items.sort(key=lambda s: ((s.get("category") or ""), s.get("name") or ""))
+    return items
+
+
+def _process_uptime(pid) -> int | None:
+    """Uptime proses (detik) dari /proc — None kalau pid mati/tidak terbaca."""
+    try:
+        pid = int(pid)
+        stat = Path("/proc/%d/stat" % pid).read_text(encoding="utf-8", errors="replace")
+        fields = stat[stat.rindex(")") + 2:].split()
+        start_ticks = int(fields[19])              # field 22 (starttime), 0-based 19
+        hz = os.sysconf("SC_CLK_TCK") or 100
+        uptime = float(Path("/proc/uptime").read_text(encoding="utf-8").split()[0])
+        return max(0, int(uptime - start_ticks / hz))
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _kanban_health() -> dict:
+    """Ringkas kondisi penyimpanan kanban: jumlah board + ukuran db-nya.
+
+    Board `default` tidak punya direktori (db-nya `$HERMES_HOME/kanban.db`), jadi
+    hitungannya memakai `list_board_meta()` — bukan menghitung folder, yang akan
+    melaporkan 0 board padahal papan default ada.
+    """
+    db_bytes = 0
+    boards = 0
+    try:
+        metas = list_board_meta()
+        boards = len(metas)
+        for meta in metas:
+            try:
+                db_bytes += _board_db_path(meta["slug"]).stat().st_size
+            except OSError:
+                continue
+    except Exception:  # noqa: BLE001 - panel status tidak boleh ikut mati
+        pass
+    boards_dir = _boards_root()
+    return {"boards": boards, "db_bytes": db_bytes, "root": str(boards_dir),
+            "ok": boards_dir.is_dir() or (_hermes_root() / "kanban.db").is_file()}
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "hermes-webchat/1.0"
@@ -1932,7 +2033,7 @@ class Handler(BaseHTTPRequestHandler):
         if user:
             return user
         path = urllib.parse.urlsplit(self.path).path
-        if path.startswith("/api/") or path.startswith("/v1/"):
+        if path.startswith("/api/") or path.startswith("/v1/") or path.startswith("/health/"):
             # POST berisi body yang belum dibaca (mis. upload 4 gambar tanpa sesi) →
             # tutup koneksi agar sisa byte tidak jadi "request" hantu di keep-alive.
             self.close_connection = True
@@ -1981,6 +2082,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self._same_origin():
                 return self._fail(403, "cross-origin ditolak")
             return self._serve_static("workspace.html")
+        # Otomasi — cron, skills, toolsets, status sistem.
+        if path in ("/otomasi", "/otomasi/"):
+            if not self._same_origin():
+                return self._fail(403, "cross-origin ditolak")
+            return self._serve_static("otomasi.html")
         if path == "/api/image":
             if not self._same_origin():
                 return self._fail(403, "cross-origin ditolak")
@@ -1996,9 +2102,32 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_agents(path)
         if path == "/api/models":
             return self._proxy_models()
+        # --- Otomasi (read-only) ---------------------------------------
+        # Panel status menyatukan dua endpoint gateway + fakta lokal (uptime,
+        # kanban, db) yang tidak dikirim gateway mana pun.
+        if path == "/api/status":
+            return self._api_status()
+        if path in ("/health/detailed", "/v1/capabilities", "/v1/toolsets"):
+            return self._proxy_get()
+        if path == "/v1/skills":
+            return self._proxy_skills()
+        if path == "/api/jobs" or JOB_ITEM_RE.match(path):
+            return self._proxy_get()
+        job_output = re.match(r"^/api/jobs/([a-f0-9]{12})/output$", path)
+        if job_output:
+            return self._job_output(job_output.group(1))
+        if path.startswith("/v1/artifacts/download/"):
+            if not ARTIFACT_DL_RE.match(path):
+                return self._fail(400, "id artifact tidak valid",
+                                  "Id artifact hanya huruf/angka/._- (maks 128).")
+            return self._proxy_artifact()
         # Hermes-specific read-only surface (curated model inventory + session history),
         # proxied so the browser can reach it same-origin without ever holding the key.
         if path == "/api/model/options" or path == "/api/sessions" or path.startswith("/api/sessions/"):
+            if path.startswith("/api/sessions/"):
+                sid = path[len("/api/sessions/"):].split("/")[0]
+                if not SESSION_ID_RE.match(sid):
+                    return self._fail(400, "id sesi tidak valid", sid[:80])
             return self._proxy_get()
         # Status run: dipakai UI untuk rekonsiliasi setelah reload.
         if path.startswith("/v1/runs/") and path.endswith("/events"):
@@ -2038,11 +2167,71 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_agents_post(path)
         if path == "/v1/chat/completions":
             return self._proxy_chat()
+        # --- Otomasi: mutasi cron/sesi/artifact -------------------------
+        if path == "/v1/artifacts/upload":
+            return self._upload_artifact()
+        if path in ("/api/jobs", "/api/cron/fire") or JOB_MUTATION_RE.match(path):
+            if not self._mutation_allowed():
+                return
+            # pause/resume/run boleh tanpa body; create wajib JSON objek.
+            allow_empty = bool(JOB_MUTATION_RE.match(path))
+            return self._proxy_json("POST", require_json=path == "/api/jobs",
+                                    allow_empty=allow_empty)
+        if path == "/api/sessions":
+            if not self._mutation_allowed():
+                return
+            return self._proxy_json("POST", require_json=True)
+        if SESSION_ACTION_RE.match(path):
+            if not self._mutation_allowed():
+                return
+            return self._proxy_json("POST", require_json=True)
         # Kontrol run: buat run, jawab approval, stop, steer. Semuanya JSON pendek,
         # bukan stream. Inilah yang membuat kartu konfirmasi di UI bisa dijawab.
         if path == "/v1/runs" or path.startswith("/v1/runs/"):
             return self._proxy_post_json()
         self._fail(404, "not found", path)
+
+    def do_PATCH(self) -> None:  # noqa: N802 - stdlib signature
+        """PATCH — hanya untuk metadata sesi dan job cron (whitelist ketat)."""
+        path = urllib.parse.urlsplit(self.path).path
+        if not self._require_auth():
+            self.close_connection = True
+            return
+        if not self._same_origin():
+            self.close_connection = True
+            return self._fail(403, "cross-origin ditolak", extra_headers=[("Connection", "close")])
+        if JOB_ITEM_RE.match(path) or (SESSION_ITEM_RE.match(path) and
+                                       path.startswith("/api/sessions/")):
+            if not self._mutation_allowed():
+                return
+            return self._proxy_json("PATCH", require_json=True)
+        return self._fail(404, "not found", path)
+
+    def do_DELETE(self) -> None:  # noqa: N802 - stdlib signature
+        """DELETE — hapus sesi atau job cron; tidak ada body yang dibaca."""
+        path = urllib.parse.urlsplit(self.path).path
+        if not self._require_auth():
+            self.close_connection = True
+            return
+        if not self._same_origin():
+            self.close_connection = True
+            return self._fail(403, "cross-origin ditolak", extra_headers=[("Connection", "close")])
+        if JOB_ITEM_RE.match(path) or (SESSION_ITEM_RE.match(path) and
+                                       path.startswith("/api/sessions/")):
+            if not self._mutation_allowed():
+                return
+            return self._proxy_json("DELETE", require_json=False)
+        return self._fail(404, "not found", path)
+
+    def _mutation_allowed(self) -> bool:
+        """Rate limit mutasi bersama kanban/sesi/cron. False = respons sudah dikirim."""
+        key = "%s|%s" % (self.address_string(), self._user() or "-")
+        if mutate_allowed(key):
+            return True
+        self._fail(429, "terlalu banyak perubahan",
+                   "Maksimal %d aksi per %d detik. Coba lagi sebentar."
+                   % (AGENT_MUTATE_LIMIT, AGENT_MUTATE_WINDOW))
+        return False
 
     # -- login / logout --------------------------------------------------
 
@@ -2600,6 +2789,239 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _proxy_json(self, method: str, *, require_json: bool = True,
+                    allow_empty: bool = False, timeout: float = 60) -> None:
+        """Passthrough JSON untuk method apa pun (POST/PATCH/DELETE).
+
+        Body divalidasi LOKAL lebih dulu: bukan JSON objek → 400 tanpa menyentuh
+        gateway. Ini yang membuat uji negatif `body bukan JSON` konsisten.
+        Jalur `/v1/runs` tetap memakai `_proxy_post_json` (tidak diubah).
+        """
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return self._fail(400, "bad Content-Length")
+        if length < 0 or length > OTOMASI_JSON_MAX:
+            self.close_connection = True
+            return self._fail(413, "body terlalu besar",
+                              "Maksimal %d KB." % (OTOMASI_JSON_MAX // 1024))
+        body = b""
+        if length:
+            body = self.rfile.read(length)
+            try:
+                parsed = json.loads(body.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                return self._fail(400, "body bukan JSON yang valid",
+                                  "Content-Type harus application/json dan body harus JSON.")
+            if not isinstance(parsed, dict):
+                return self._fail(400, "body JSON harus berupa objek",
+                                  "Array/angka/string tidak diterima.")
+        elif require_json and not allow_empty:
+            return self._fail(400, "body JSON wajib diisi",
+                              "Kirim objek JSON, mis. {\"name\": \"...\"}.")
+
+        req = urllib.request.Request(
+            UPSTREAM + self.path, data=(body or None), method=method,
+            headers=self._upstream_headers(stream=False),
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                payload = resp.read()
+                status = resp.status
+        except urllib.error.HTTPError as exc:
+            return self._upstream_error(exc)
+        except Exception as exc:  # noqa: BLE001 - dilaporkan ke UI
+            return self._upstream_error(exc)
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _proxy_skills(self) -> None:
+        """`GET /v1/skills` + cadangan lokal kalau endpoint gateway rusak.
+
+        Build terpasang (0.22.1) memanggil `_find_all_skills(include_editorial=…)`
+        padahal signature-nya belum punya kwarg itu → selalu 500. Daripada panel
+        Skills kosong, daftar dibaca dari disk dengan bentuk JSON yang sama dan
+        ditandai `source: "local-fallback"` supaya jujur soal asalnya.
+        """
+        req = urllib.request.Request(UPSTREAM + "/v1/skills",
+                                     headers=self._upstream_headers(stream=False))
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                body = resp.read()
+                status = resp.status
+        except urllib.error.HTTPError as exc:
+            if exc.code < 500:
+                return self._upstream_error(exc)
+            return self._skills_fallback("gateway HTTP %d" % exc.code)
+        except Exception as exc:  # noqa: BLE001 - gateway mati → tetap tampilkan daftar
+            return self._skills_fallback(str(exc))
+        if status != 200:
+            return self._skills_fallback("gateway HTTP %d" % status)
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            return self._skills_fallback("respons gateway bukan JSON")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _skills_fallback(self, reason: str) -> None:
+        items = local_skill_list()
+        self._json(200, {
+            "object": "list", "data": items, "count": len(items),
+            "source": "local-fallback",
+            "note": "GET /v1/skills gagal (%s); daftar dibaca dari $HERMES_HOME/skills."
+                    % reason,
+        })
+
+    def _proxy_artifact(self) -> None:
+        """`GET /v1/artifacts/download/{id}` — biner apa adanya + header unduhan.
+
+        Artifact gateway bersifat one-shot (unduhan kedua 404), jadi handler ini
+        tidak boleh di-prefetch: tautan di UI hanya diambil saat diklik.
+        """
+        req = urllib.request.Request(UPSTREAM + self.path,
+                                     headers=self._upstream_headers(stream=False))
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = resp.read()
+                ctype = resp.headers.get("Content-Type") or "application/octet-stream"
+                disposition = resp.headers.get("Content-Disposition") or ""
+                sha = resp.headers.get("X-Artifact-Sha256") or ""
+                artifact_id = resp.headers.get("X-Artifact-Id") or ""
+        except urllib.error.HTTPError as exc:
+            return self._upstream_error(exc)
+        except Exception as exc:  # noqa: BLE001 - dilaporkan ke UI
+            return self._upstream_error(exc)
+        headers = [("Content-Disposition", disposition or "attachment"),
+                   ("Cache-Control", "no-store")]
+        if sha:
+            headers.append(("X-Artifact-Sha256", sha))
+        if artifact_id:
+            headers.append(("X-Artifact-Id", artifact_id))
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        for name, value in headers:
+            self.send_header(name, value)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _upload_artifact(self) -> None:
+        """`POST /v1/artifacts/upload` — badan mentah diteruskan apa adanya.
+
+        Content-Type dari klien WAJIB ikut (gateway menolak 415 kalau tidak ada di
+        allowlist-nya), dan nama berkas lewat `X-Artifact-Filename`.
+        """
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return self._fail(400, "bad Content-Length")
+        if length <= 0:
+            return self._fail(400, "body artifact kosong")
+        if length > ARTIFACT_MAX_BYTES:
+            self.close_connection = True
+            return self._fail(413, "artifact terlalu besar",
+                              "Maksimal %d MB." % (ARTIFACT_MAX_BYTES // (1024 * 1024)))
+        if not self._mutation_allowed():
+            self.close_connection = True
+            return
+        data = self.rfile.read(length)
+        headers = self._upstream_headers(stream=False)
+        headers["Content-Type"] = self.headers.get("Content-Type") or "application/octet-stream"
+        filename = (self.headers.get("X-Artifact-Filename") or "").strip()
+        if filename:
+            headers["X-Artifact-Filename"] = filename[:200]
+        req = urllib.request.Request(UPSTREAM + "/v1/artifacts/upload", data=data,
+                                     method="POST", headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                payload = resp.read()
+                status = resp.status
+        except urllib.error.HTTPError as exc:
+            return self._upstream_error(exc)
+        except Exception as exc:  # noqa: BLE001 - dilaporkan ke UI
+            return self._upstream_error(exc)
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _api_status(self) -> None:
+        """Panel diagnosa: /health/detailed + /v1/capabilities + fakta lokal.
+
+        Gateway tidak mengirim uptime di mana pun, dan status kanban/DB hanya
+        terlihat dari host ini — jadi keduanya dihitung di sini, bukan dikarang.
+        """
+        out: dict = {"generated_at": int(time.time()), "webchat": {
+            "uptime_seconds": int(time.time() - STARTED_AT),
+            "started_at": int(STARTED_AT), "port": LISTEN_PORT,
+            "upstream": UPSTREAM, "python": sys.version.split()[0],
+        }}
+        errors = {}
+        for key, path, timeout in (("gateway", "/health/detailed", 20),
+                                   ("capabilities", "/v1/capabilities", 20)):
+            req = urllib.request.Request(UPSTREAM + path,
+                                         headers=self._upstream_headers(stream=False))
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    out[key] = json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                errors[key] = "HTTP %d" % exc.code
+            except Exception as exc:  # noqa: BLE001 - tampil di panel
+                errors[key] = "%s: %s" % (type(exc).__name__, exc)
+        gw = out.get("gateway") or {}
+        out["uptime_seconds"] = _process_uptime(gw.get("pid"))
+        out["kanban"] = _kanban_health()
+        db_path = _hermes_root() / "state.db"
+        try:
+            size = db_path.stat().st_size
+        except OSError:
+            size = 0
+        out["state_db"] = {"path": str(db_path), "bytes": size,
+                           "ok": db_path.is_file() and size > 0}
+        out["errors"] = errors
+        self._json(200, out)
+
+    def _job_output(self, job_id: str) -> None:
+        """`GET /api/jobs/{id}/output` — hasil run terakhir dari cron/output.
+
+        Gateway tidak mengirim badan hasil di `/api/jobs`, padahal justru itu yang
+        dicari saat sebuah job terjadwal selesai. Berkasnya sudah ada di
+        `$HERMES_HOME/cron/output/<job_id>/*.md`; dibaca read-only, id divalidasi
+        12 hex sehingga tidak bisa keluar dari direktori itu.
+        """
+        out_dir = _hermes_root() / "cron" / "output" / job_id
+        try:
+            files = sorted((p for p in out_dir.glob("*.md") if p.is_file()),
+                           key=lambda p: p.name, reverse=True)
+        except OSError:
+            files = []
+        if not files:
+            return self._json(200, {"job_id": job_id, "file": "", "text": "",
+                                    "files": 0, "note": "belum ada hasil run tersimpan"})
+        latest = files[0]
+        try:
+            text = latest.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            return self._fail(500, "gagal membaca hasil run", str(exc))
+        # Ambil bagian "## Response" kalau ada — itu jawaban agen, bukan prompt.
+        marker = "## Response"
+        if marker in text:
+            text = text.split(marker, 1)[1].lstrip("\n")
+        self._json(200, {"job_id": job_id, "file": latest.name,
+                         "text": text[:20000], "files": len(files),
+                         "truncated": len(text) > 20000})
 
     def _proxy_chat(self) -> None:
         try:

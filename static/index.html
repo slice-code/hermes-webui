@@ -56,6 +56,14 @@
     background:transparent; border-color:var(--line2); border-radius:10px;
   }
   .newchat svg{width:16px;height:16px}
+  /* pintasan halaman di sidebar: Kanban agen worker & Workspace */
+  a.sidenav{
+    display:flex; align-items:center; gap:9px; padding:8px 11px; font-size:13px;
+    color:var(--dim); text-decoration:none; border:1px solid transparent; border-radius:10px;
+    margin-top:2px;
+  }
+  a.sidenav:hover{background:var(--side2); color:#fff; border-color:var(--line)}
+  a.sidenav svg{width:16px;height:16px; opacity:.85; flex:none}
   .side-search input{
     width:100%; padding:8px 11px; background:var(--side2); color:var(--fg);
     border:1px solid var(--line); border-radius:9px; font:12.5px/1.4 inherit; outline:none;
@@ -459,6 +467,14 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       Chat baru
     </button>
+    <a class="sidenav" href="/agents" title="Papan kanban agen worker">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="13" rx="1"/></svg>
+      Kanban agen worker
+    </a>
+    <a class="sidenav" href="/workspace" title="Kantor virtual — siapa yang sedang bekerja">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Workspace
+    </a>
     <div class="side-search"><input id="convSearch" type="search" placeholder="Cari percakapan" autocomplete="off"></div>
   </div>
   <div class="side-label">Percakapan</div>
@@ -484,7 +500,7 @@
     </button>
     <nav class="pages" aria-label="Navigasi halaman">
       <a href="/" aria-current="page">Chat</a>
-      <a href="/agents" title="Papan kanban Hermes — status task per agent">Papan</a>
+      <a href="/agents" title="Papan kanban agen worker — buat, atur, dan jalankan task">Kanban</a>
       <a href="/workspace" title="Kantor virtual — siapa yang sedang bekerja">Workspace</a>
     </nav>
     <span class="spacer"></span>

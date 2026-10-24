@@ -322,6 +322,93 @@ baru ditambahkan **ke sesi yang sama** (bukan fork/salinan). Sesi dari permukaan
 ada di DB dan menulis lanjutannya di sana (diuji pada sesi `cli`: 22 → 24 pesan, `source`
 tetap `cli`). Tombol **Tutup** tetap ada untuk sekadar membaca tanpa mengubah sesi.
 
+### Manajemen sesi (buat · ganti judul · fork · hapus)
+
+Panel **Riwayat** bukan lagi hanya baca. Tiap baris sesi punya empat aksi, dan tombol
+**+ Sesi** di kepala panel membuat sesi Hermes baru (langsung dipakai sebagai `session_id`
+percakapan berikutnya):
+
+| Tombol | Endpoint | Catatan |
+|---|---|---|
+| **+ Sesi** | `POST /api/sessions` | Membuat baris sesi kosong di state Hermes, judul otomatis `Sesi webchat <waktu>`. |
+| **Ganti judul** | `PATCH /api/sessions/{id}` `{title}` | Modal internal berisi input (bukan `prompt()`); judul percakapan lokal yang menunjuk sesi itu ikut diperbarui. |
+| **Fork** | `POST /api/sessions/{id}/fork` `{}` | Sama seperti `/branch` di CLI: transkrip disalin ke sesi baru, dan **sesi asal ditandai berakhir (`branched`)**. Judul fork mengikuti penomoran lineage (`… #2`). |
+| **Hapus** | `DELETE /api/sessions/{id}` | Konfirmasi modal internal. Menghapus sesi **di server** (transkrip, tool call, gambar); percakapan di browser tidak ikut terhapus. |
+
+Tombol **Lanjutkan chat** tetap seperti sebelumnya (pesan baru masuk ke sesi yang dibaca).
+Semua aksi memakai `fetch` yang sama dengan halaman ini, jadi cookie 401 tetap memicu
+re-login, dan POST/PATCH/DELETE tetap melewati cek Origin + rate limit mutasi.
+
+### Arahan saat run berjalan (steer)
+
+Selama run berjalan muncul kotak **Arahan** di atas composer. Isi teks lalu Enter (atau
+tombol **Arahan**) → `POST /v1/runs/{run_id}/steer` `{input}`. Teks itu disisipkan ke agent
+yang sedang bekerja, bukan menjadi pesan baru, dan muncul sebagai chip `↪ …` di transkrip.
+Event `run.steered` dari stream menandai chip itu sudah diterima (kalau event datang lebih
+dulu, chip baru dibuat dari event). Kalau run sudah tidak menerima steer, server menjawab
+`409 run_not_accepting_steer` dan chip menampilkan alasan penolakannya.
+
+Diuji nyata: satu run yang sedang menunggu jawaban klarifikasi diberi arahan
+"sebut juga kata 'steer-ok'", dan jawaban akhir agent memang memuat kata itu.
+
+### Klarifikasi (agent bertanya balik)
+
+Kalau tool `clarify` aktif, agent bisa bertanya di tengah run. Webchat menampilkan kartu
+biru **"Agen menanyakan sesuatu"** berisi pertanyaan, tombol pilihan dari agent, dan kolom
+jawaban bebas:
+
+1. Stream mengirim `clarify.request` `{prompt_id, execution_generation, question, choices[], multi_select}`.
+2. Klik pilihan atau tulis jawaban → `POST /v1/runs/{run_id}/clarify`
+   `{request_id, execution_generation, answer}` — **tepat tiga field itu**; server menolak
+   field lain (`invalid_params`) dan generasi yang basi (`stale_generation`).
+3. Server membalas `{run_id, status: "resolved", prompt_id}` lalu mengirim `clarify.settled`.
+
+> **Penting — toolset `clarify` harus dipasang untuk platform `api_server`.**
+> Default `hermes-api-server` sengaja **tidak** memuat `clarify` (postur "coding tanpa UI
+> interaktif"). Tanpa itu, agent di jalur `/v1/runs` tidak punya tool untuk bertanya balik,
+> jadi kartu ini tidak akan pernah muncul. Di mesin ini `~/.hermes/config.yaml` karena itu
+> memuat satu baris tambahan di luar repo:
+>
+> ```yaml
+> platform_toolsets:
+>   # clarify: kartu tanya-jawab di webchat (lihat README webchat bagian Klarifikasi).
+>   # Tanpa toolset ini, agen di platform api_server tidak bisa bertanya balik.
+>   api_server: [hermes-api-server, clarify]
+> ```
+>
+> Kalau baris itu dihapus, agent kembali tidak bisa bertanya balik (kartu klarifikasi mati,
+> fitur lain tidak terpengaruh). Mapping ini dibaca **per run** (`_get_platform_tools(...)`
+> saat agent dibuat), jadi menambah/menghapusnya berlaku pada run berikutnya **tanpa
+> restart gateway** — dibuktikan dengan memicu `clarify.request` tanpa me-restart apa pun.
+> Backup config sebelum perubahan: `/root/.hermes/config.yaml.bak-clarify-20261024`
+> (salinan config tanpa blok `clarify`; `cp` balik lalu hapus baris itu untuk kembali).
+
+### Unduhan artifact
+
+Path artifact yang muncul di teks agent (`/v1/artifacts/download/<id>`, mis. dari
+`download_path` pada receipt upload) diubah menjadi tautan **⇩ artifact** yang menunjuk
+path yang sama, sehingga unduhannya lewat origin webchat (cookie sesi ikut, API key tetap di
+server). Proxy meneruskan `Content-Type`, `Content-Disposition`, `X-Artifact-Sha256`, dan
+`X-Artifact-Id` apa adanya. Artifact gateway bersifat **sekali pakai** (unduhan kedua `404`)
+dan kedaluwarsa ±5 menit, jadi tautan tidak di-prefetch.
+
+Upload artifact untuk agent tersedia di `POST /v1/artifacts/upload` (badan mentah,
+`Content-Type` wajib ada di allowlist gateway, nama berkas lewat `X-Artifact-Filename`).
+
+> Endpoint artifact hanya hidup kalau `browser.extension_control.enabled: true` di
+> config Hermes; default-nya `false` → gateway menjawab `404 browser_control_disabled`.
+> Proxy meneruskan status itu apa adanya. (Uji 200 + `Content-Disposition` di repo ini
+> dilakukan dengan flag dinyalakan sementara, lalu dikembalikan ke `false`.)
+
+### Model per sesi
+
+Panel **Setelan → Model untuk sesi ini** mengunci model untuk satu sesi Hermes:
+`POST /api/sessions/{id}/model` `{model, provider}`. Klik **Pilih model sesi…** membuka
+pemilih model yang sama, tapi pilihannya dikirim ke endpoint sesi (banner pemilih berubah
+jadi "target: sesi …") dan **model default profil tidak berubah** — header chat tetap
+menampilkan model profil. Kunci sesi menang atas pilihan model di header untuk sesi itu.
+Status kunci dibaca dari `GET /api/sessions/{id}` (`has_model_config` + `model`).
+
 ## Papan Kanban (`/agents`)
 
 Halaman kedua: **papan kanban yang bisa ditulis** — bukan cuma memantau. Tujuh kolom
@@ -581,14 +668,115 @@ Perubahan `static/*.html` **tidak** butuh restart. Restart dijalankan **dari she
 (SSH)**: guard terminal agent menolak perintah stop/restart service saat tidak ada user
 yang bisa menyetujui permintaan itu.
 
+## Otomasi (`/otomasi`) — cron, skills, toolsets, status
+
+Halaman keempat: satu tempat untuk hal-hal yang biasanya hanya terlihat di CLI. Empat tab,
+mobile-first, satu file tanpa CDN/dependency. Dibuka lewat navigasi **Otomasi** di header
+semua halaman (Chat · Kanban · Workspace · Otomasi, `aria-current` mengikuti halaman aktif)
+dan pintasan **Otomasi** di sidebar chat. Cookie sesi sama; tanpa sesi → 302 ke `/login`.
+
+### Tab Cron — tugas terjadwal
+
+Daftar job dari `GET /api/jobs?include_disabled=true`. Tiap kartu menampilkan nama, status
+(aktif/dijeda/selesai), jadwal (`schedule_display`), jalan berikutnya, **terakhir jalan +
+status hasil**, skills, dan cuplikan prompt. Aksi: **Jeda/Lanjutkan**, **Jalankan sekarang**,
+**Hasil terakhir**, **Ubah**, **Hapus** (konfirmasi modal internal).
+
+Form **+ Job baru** mengirim `POST /api/jobs` dengan `name`, `schedule`, `prompt`, `deliver`,
+dan `skills` opsional. `schedule` menerima durasi (`30m`, `2h`), cron 5 kolom
+(`0 9 * * *`), atau frasa `every …`; tombol preset mengisi contohnya. **Ubah** memakai
+`PATCH /api/jobs/{id}` (field di-whitelist gateway: `name`, `schedule`, `prompt`, `deliver`,
+`skills`, `repeat`, `enabled`).
+
+Job dijalankan **gateway**, bukan tab ini, jadi setelah **Jalankan sekarang** status baru
+berubah ketika run selesai (bisa ~1 menit); halaman memantau sendiri beberapa kali.
+Badan hasil run tidak dikirim `GET /api/jobs`, jadi webchat membaca berkas yang memang
+ditulis cron — `GET /api/jobs/{id}/output` → `$HERMES_HOME/cron/output/<id>/*.md` (bagian
+`## Response` saja, dibatasi 20 KB). Endpoint ini lokal (bukan proxy) dan id-nya wajib 12 hex.
+
+Bukti uji yang dipakai saat membangun fitur ini: job dibuat lewat halaman → `hermes cron list`
+menampilkannya, `pause` → `[paused]` di CLI, `resume` → `[active]`, `PATCH` judul → nama di
+CLI ikut berubah, `run` → `last_status: ok` + berkas hasil, `DELETE` → CLI kembali kosong.
+
+### Tab Skills
+
+`GET /v1/skills` (read-only — halaman ini **tidak** memasang/menghapus skill), dengan kotak
+cari atas nama/deskripsi/kategori dan pengelompokan per kategori.
+
+> Build 0.22.1 di mesin ini mengembalikan **500** untuk `GET /v1/skills`
+> (`TypeError: _find_all_skills() got an unexpected keyword argument 'include_editorial'`).
+> Karena itu webchat punya cadangan: kalau gateway menjawab ≥500, daftar dibaca dari disk
+> (`$HERMES_HOME/skills/<kategori>/<nama>/SKILL.md`, frontmatter `name`/`description`) dengan
+> bentuk JSON yang sama, dan responsnya ditandai `"source": "local-fallback"` + `note`.
+> Tab Skills menampilkan label **"dari disk (cadangan)"** supaya jelas asalnya, bukan pura-pura
+> datang dari gateway. Setelah bug upstream diperbaiki, jalur gateway otomatis dipakai lagi.
+
+### Tab Toolsets
+
+`GET /v1/toolsets` — tiap toolset platform `api_server`: label, nama, deskripsi, daftar tool
+konkret, plus chip **aktif/nonaktif** dan **terkonfigurasi/butuh kunci**. Read-only; untuk
+mengubahnya sunting `platform_toolsets` di config Hermes (lihat bagian Klarifikasi).
+
+### Tab Status
+
+Menggabungkan `GET /health/detailed` + `GET /v1/capabilities` + fakta lokal dalam satu
+endpoint `GET /api/status`:
+
+- **Gateway**: versi, state, pid, jumlah agen aktif.
+- **Model aktif**: provider · model dari `GET /api/model/options` (profil default).
+- **Uptime**: proses gateway (dihitung dari `/proc/<pid>` + `/proc/uptime`) dan uptime
+  proses webchat — gateway tidak mengirim uptime di endpoint mana pun.
+- **Kesiapan**: chip per cek (`state_db`, `session_store`, `config`, `model`, `disk`,
+  `gateway`, `background_queues`) beserta `used_percent`/state-nya.
+- **Kanban**: jumlah board + ukuran `kanban.db` (dibaca dari direktori board lokal).
+- **state.db**: path + ukuran + status terbaca.
+- **Permintaan hari ini** + p95 dari `api_server.metrics.metrics_today`.
+- **Capabilities**: tabel fitur (`true`/`false`/objek) dan tabel endpoint yang diiklankan.
+
+### Kontrak endpoint baru (semua di balik sesi login)
+
+| Endpoint webchat | Diteruskan ke gateway | Catatan |
+|---|---|---|
+| `GET /api/jobs` | `GET /api/jobs` | Daftar job; query `include_disabled` ikut. |
+| `GET /api/jobs/{id}` | `GET /api/jobs/{id}` | id wajib 12 hex, kalau tidak `404` di router. |
+| `POST /api/jobs` | `POST /api/jobs` | Body wajib JSON objek; bukan JSON → `400` lokal. |
+| `PATCH /api/jobs/{id}` | `PATCH /api/jobs/{id}` | Whitelist field ditegakkan gateway. |
+| `DELETE /api/jobs/{id}` | `DELETE /api/jobs/{id}` | Tanpa body. |
+| `POST /api/jobs/{id}/pause\|resume\|run` | sama | Body opsional (`run` boleh `{prompt}`). |
+| `GET /api/jobs/{id}/output` | **lokal** | Hasil run terakhir dari `cron/output`. |
+| `POST /api/cron/fire` | `POST /api/cron/fire` | Diteruskan, tapi butuh JWT Chronos (bukan API key) → UI tidak memakainya. |
+| `GET /v1/skills` | `GET /v1/skills` | Ada cadangan lokal (lihat di atas). |
+| `GET /v1/toolsets` | `GET /v1/toolsets` | Read-only. |
+| `GET /health/detailed` | `GET /health/detailed` | Sekarang `401` JSON tanpa sesi (bukan 302). |
+| `GET /v1/capabilities` | `GET /v1/capabilities` | Read-only. |
+| `GET /api/status` | **lokal** | Gabungan health+capabilities+uptime+kanban+db. |
+| `POST /api/sessions` | `POST /api/sessions` | Buat sesi. |
+| `PATCH /api/sessions/{id}` | `PATCH /api/sessions/{id}` | Ganti judul. |
+| `DELETE /api/sessions/{id}` | `DELETE /api/sessions/{id}` | Hapus sesi. |
+| `POST /api/sessions/{id}/fork` | sama | Fork (= `/branch`). |
+| `POST /api/sessions/{id}/model` | sama | Kunci model per sesi. |
+| `POST /v1/runs/{id}/steer` | sama | Sudah ada jalurnya (proxy `/v1/runs/*`), sekarang dipakai UI. |
+| `POST /v1/runs/{id}/clarify` | sama | idem; body `{request_id, execution_generation, answer}`. |
+| `POST /v1/artifacts/upload` | sama | Badan mentah + `Content-Type` + `X-Artifact-Filename`. |
+| `GET /v1/artifacts/download/{id}` | sama | Biner + `Content-Disposition`/`X-Artifact-*`. |
+
+Pengaman yang berlaku untuk semuanya: sesi login wajib (`401` JSON untuk `/api/*`, `/v1/*`,
+`/health/*`), POST/PATCH/DELETE wajib same-origin (`403`), id divalidasi regex sebelum
+ditempel ke URL gateway, body JSON diperiksa lokal (`400`), ukuran body dibatasi, dan mutasi
+(`POST /api/jobs`, `PATCH/DELETE`, `POST /api/sessions`, fork, model, upload artifact) kena
+rate limit yang sama dengan kanban (`WEBCHAT_MUTATE_LIMIT`, default 40/menit → `429`).
+Path gateway **tidak** dibuka borongan: hanya daftar di tabel ini yang punya rute; mis.
+`/api/secrets` dan `/v1/models` tetap `404`.
+
 ## File
 
 | File | Isi |
 |---|---|
-| `server.py` | Server + reverse proxy + login + unggah/ekstraksi lampiran (stdlib Python saja) + endpoint `/api/agents/*` |
+| `server.py` | Server + reverse proxy + login + unggah/ekstraksi lampiran (stdlib Python saja) + endpoint `/api/agents/*` + proxy Otomasi (`/api/jobs`, `/v1/skills`, `/v1/toolsets`, `/health/detailed`, `/v1/capabilities`, sesi, artifact) |
 | `static/index.html` | Seluruh UI chat (HTML + CSS + JS, tanpa CDN): sidebar percakapan, lampiran, lightbox |
 | `static/agents.html` | Halaman **Papan Kanban** (`/agents`) — papan 7 kolom yang bisa ditulis (drag/aksi via CLI), mobile-first |
 | `static/workspace.html` | Halaman **Workspace** (`/workspace`) — kantor virtual realtime (sprite SVG + animasi CSS) |
+| `static/otomasi.html` | Halaman **Otomasi** (`/otomasi`) — tab Cron (job terjadwal), Skills, Toolsets, Status sistem |
 | `static/login.html` | Halaman login |
 | `uploads/` | Lampiran terunggah (gambar + dokumen), dibuat otomatis, `0700`, **tidak** di-commit |
 | `auth.json` | Username + hash PBKDF2 + signing secret (mode `600`, jangan di-commit) |

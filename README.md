@@ -175,15 +175,20 @@ curl -s -c jar -X POST http://127.0.0.1:8650/login \
 curl -s -b jar -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8650/   # 200
 ```
 
-Pemantau Agent + Workspace (cookie yang sama):
+Papan Kanban + Workspace (cookie yang sama):
 
 ```bash
-curl -s -b jar http://127.0.0.1:8650/agents | grep -c 'id="agent-monitor"'   # 1
+curl -s -b jar http://127.0.0.1:8650/agents | grep -c 'id="papan"'            # 1
 curl -s -b jar http://127.0.0.1:8650/api/agents/boards                       # daftar board
 curl -s -b jar 'http://127.0.0.1:8650/api/agents/board?slug=pjtki'           # counts + tasks
 curl -s -b jar 'http://127.0.0.1:8650/api/agents/board?slug=../../etc'       # 400 (ditolak)
 curl -s -b jar http://127.0.0.1:8650/workspace | grep -c 'id="workspace-room"'  # 1
 curl -s -b jar 'http://127.0.0.1:8650/api/agents/live?slug=pjtki'            # kantor virtual (JSON)
+curl -s -b jar http://127.0.0.1:8650/api/agents/assignees                    # profil worker
+curl -s -b jar -X POST http://127.0.0.1:8650/api/agents/task-create \
+  -H 'Origin: http://127.0.0.1:8650' -H 'Content-Type: application/json' \
+  -d '{"slug":"pjtki","title":"Cek dapur","assignee":"default","priority":2}'  # 201
+curl -s -b jar 'http://127.0.0.1:8650/api/agents/dispatch-preview?slug=pjtki'  # dry-run dispatcher
 ```
 
 ### Menampilkan laporan: tabel, kode, dan pohon
@@ -317,73 +322,162 @@ baru ditambahkan **ke sesi yang sama** (bukan fork/salinan). Sesi dari permukaan
 ada di DB dan menulis lanjutannya di sana (diuji pada sesi `cli`: 22 → 24 pesan, `source`
 tetap `cli`). Tombol **Tutup** tetap ada untuk sekadar membaca tanpa mengubah sesi.
 
-## Pemantau Agent (`/agents`)
+## Papan Kanban (`/agents`)
 
-Halaman kedua di app ini: **memantau pekerjaan agent** di papan kanban Hermes
-(status, siapa agent-nya, progress, aktivitas terakhir). Dibuat mobile-first — satu
-kolom, target sentuh ≥44 px, tanpa scroll horizontal dari 320 px sampai desktop.
-Dibuka lewat tombol **🤖 Agent** di header chat (dan tautan **← Kembali ke chat** untuk
-balik ke `/`). Cookie sesi yang sama berlaku; tanpa sesi tetap dialihkan ke `/login`.
+Halaman kedua: **papan kanban yang bisa ditulis** — bukan cuma memantau. Tujuh kolom
+(**Triage · Todo · Ready · Running · Review · Blocked · Done**), kartu bisa ditarik antar
+kolom, task baru dibuat dari modal, dan setiap aksi dikerjakan oleh CLI `hermes kanban`
+yang sama dengan yang dipakai agent. Mobile-first: kolom bisa digeser horizontal, target
+sentuh ≥ 36 px, tanpa CDN/dependency (satu file HTML).
 
-Isi halaman:
+Dibuka lewat tautan **Papan** di header chat/workspace (dan ditandai `aria-current` di
+halaman ini). Cookie sesi yang sama berlaku; tanpa sesi → 302 ke `/login`.
 
-| Bagian | Isi |
-|---|---|
-| Header lengket | dua baris yang menempel **bersama-sama** saat halaman digulir: (1) judul **Pemantau Agent**, tombol muat ulang, tautan kembali ke chat; (2) pemilih board + indikator. Keduanya berada dalam satu pembungkus `.head` supaya tidak saling menutupi (dua baris `sticky` terpisah membuat baris judul menutup dropdown board) |
-| Indikator | titik status (hijau/merah) + "diperbarui Ns lalu" |
-| Chip ringkasan | `Berjalan n` · `Siap n` · `Menunggu n` · `Terhenti n` · `Selesai n` (+ chip lain hanya kalau ada isinya). **Ketuk = filter, ketuk lagi = lepas** |
-| Kartu task | badge status berwarna, nama agent, waktu relatif, judul maks 2 baris; untuk task `running` ada titik berdenyut + PID hidup/mati |
-| Panel detail | ketuk kartu → sheet: status/agent/PID/heartbeat, path workspace (mono + tombol **Salin**), body lengkap, komentar terakhir, event terakhir, run worker, induk/lanjutan |
+### Cara pakai
 
-Perilaku data:
+1. **Buat task** — tombol `+ Task`. Isi judul (wajib, ≤200), deskripsi, assignee (dari
+   `kanban assignees`), prioritas 0–5, workspace (`scratch` default, `worktree`, atau
+   folder yang sudah ada), dan centang **Triage** kalau spesifikasinya belum jelas.
+   Task langsung muncul sebagai kartu; tanpa Triage ia masuk `Ready`.
+2. **Assign** — pilih profil worker. Hanya ada satu profil (`default`) di pemasangan ini;
+   worker dijalankan oleh profil tersebut. Tambah profil di luar UI dengan
+   `hermes profile create <nama>`.
+3. **Tarik kartu** antar kolom (desktop) atau pakai tombol **Pindah kolom** di detail
+   (sentuh). Peta transisinya:
 
-- **Auto-refresh 10 detik**, tapi **berhenti saat tab tidak terlihat** (`document.hidden`)
-  dan menyegarkan **sekali** begitu tab kembali aktif; kalau fetch gagal, daftar yang
-  sudah tampil tetap ada dan hanya muncul baris peringatan kecil. Baris peringatan itu
-  **hilang sendiri** begitu ada satu refresh yang berhasil (manual atau auto): titik status
-  kembali hijau dan label balik ke "diperbarui N dtk lalu" — jadi indikator tidak pernah
-  bilang "gagal" sementara datanya sudah segar.
-- Board `default` tampil walau belum pernah dipakai; board kosong menampilkan empty-state
-  ("Belum ada task di board ini").
+   | Tarik ke | Dari | Aksi CLI |
+   |---|---|---|
+   | Ready | Todo, Blocked | `promote` |
+   | Review | Ready | `request-review` |
+   | Ready | Review | `reopen-review` |
+   | Blocked | Ready/Todo/Review | `block --kind <…>` (alasan wajib, lewat modal) |
+   | Done | Ready/Todo/Review/Blocked | `complete --result <…>` |
+   | Done | Running | `complete --force` (konfirmasi ekstra: run worker ditutup) |
+   | Triage/Todo | apa pun | **ditolak** dengan penjelasan (Triage hanya untuk task baru; Todo = menunggu induk) |
+   | apa pun | Running | **ditolak** dari drag — pakai tombol di detail agar run worker ikut ditutup |
 
-### Endpoint JSON (lokal, bukan proxy)
+   Drop yang tidak masuk akal **selalu** dijawab pesan (toast), bukan gagal diam-diam;
+   penolakan dari CLI ditampilkan apa adanya (mis. "unsatisfied parent dependencies").
+4. **Promote = worker jalan otomatis.** `promote` memindahkan task ke `Ready`; dispatcher
+   yang berjalan **di dalam gateway** (bukan di proses webchat ini) akan meng-claim dan
+   men-spawn worker pada tick berikutnya (±60 detik). Tidak ada loop dispatch di server
+   ini, dan `kanban dispatch` tanpa `--dry-run` tidak pernah dipanggil dari UI. Tombol
+   **Pratinjau dispatch** hanya menjalankan `dispatch --dry-run --json` (read-only).
+5. **Detail sheet** (klik kartu) memuat semua yang lama — status, PID/heartbeat, workspace,
+   body, komentar, event, run — plus aksi: Assign, Set model, Promote, Block, Unblock,
+   Complete, Request review, Reopen review, Komentar, Edit judul/body, Arsipkan
+   (arsip = keluar dari papan, **bukan** hapus; tidak ada tombol hapus permanen).
+   Aksi destruktif (arsip, complete paksa) memakai dialog konfirmasi internal.
+6. **Board** — pemilih board + tombol **Board baru** (slug + nama). Board baru punya
+   queue/workspace sendiri dan tidak mengubah board aktif global (`kanban switch`).
 
-Semua di bawah ini **lokal**: dibaca langsung dari SQLite kanban, tidak diteruskan ke
-gateway, jadi API key tidak ikut dan tidak ada rute proxy baru. Tetap wajib **sesi login**
-dan **same-origin** (Origin/Referer dicek → 403; tanpa sesi → 401/302).
+Semua dialog dibuat sendiri (`.modalWrap`) — tidak memakai `confirm()`/`prompt()` bawaan
+browser, supaya bisa memuat beberapa field, tervalidasi, dan bergaya sama di mobile.
+
+Chip ringkasan tetap ada (`Running n`, `Ready n`, …): ketuk = filter, ketuk lagi = lepas.
+Indikator kanan atas tetap "diperbarui N dtk lalu" dengan titik hijau/merah; auto-refresh
+10 detik hanya saat tab terlihat.
+
+### Endpoint baca (lokal, bukan proxy)
+
+Dibaca langsung dari SQLite kanban (mode `ro`), tidak diteruskan ke gateway. Tetap wajib
+sesi login + same-origin (Origin/Referer beda host → 403).
 
 | Endpoint | Isi |
 |---|---|
-| `GET /api/agents/boards` | array `[{slug, name, description, task_count, running_count, current}]` — `default` lebih dulu, lalu board lain terurut; board yang diarsipkan dilewati |
-| `GET /api/agents/board?slug=<slug>&limit=<n>` | `{board, generated_at, counts, tasks, has_db, returned, truncated}`; `limit` 1–200 (default 150) |
-| `GET /api/agents/task?slug=<slug>&id=<task_id>` | satu task lengkap: `body` penuh, `comments` (10 terakhir), `events` (20 terakhir), `runs` (5 terakhir) |
+| `GET /api/agents/boards` | `[{slug, name, description, task_count, running_count, current}]` |
+| `GET /api/agents/board?slug=<slug>&limit=<n>` | `{board, generated_at, counts, tasks, has_db, returned, truncated}`, `limit` 1–200 |
+| `GET /api/agents/task?slug=<slug>&id=<task_id>` | satu task lengkap: `body`, `comments`, `events`, `runs` |
+| `GET /api/agents/live?slug=<slug>` | state per profil untuk halaman Workspace |
+| `GET /api/agents/assignees` | `{assignees:[{name,on_disk,counts}], count, single, note, generated_at}` — dari `kanban assignees --json`, cache 30 dtk |
+| `GET /api/agents/dispatch-preview?slug=<slug>` | `{board, generated_at, preview}` — `kanban --board <slug> dispatch --dry-run --json` |
 
-Bentuk `tasks[]`: `id, title, status, assignee, priority, created_at, started_at,
-completed_at, worker_pid, worker_alive, last_heartbeat_at, workspace_path, workspace_kind,
-branch_name, block_kind, body_preview (≤400 char), body_truncated, comment_count,
-last_comment, last_event, parents, children` — **body penuh tidak pernah dikirim di
-endpoint daftar** (bisa sangat panjang); ambil lewat `/api/agents/task`.
+`tasks[]`: `id, title, status, assignee, priority, created_at, started_at, completed_at,
+worker_pid, worker_alive, last_heartbeat_at, workspace_path, workspace_kind, branch_name,
+block_kind, body_preview, body_truncated, comment_count, last_comment, last_event, parents,
+children`. Body penuh hanya lewat `/api/agents/task`.
 
-`counts` memuat `running/ready/todo/blocked/review/done/archived` + `total`; `running` di
-atas pada daftar task dan **task arsip tidak ikut dikirim** (hanya dihitung). Ini sebabnya
-angka `counts` cocok dengan `hermes kanban --board <slug> list`, sementara `total` juga
-menghitung arsip seperti `hermes kanban boards list`.
+### Endpoint tulis (baru)
 
-Detail teknis & keamanan:
+Semua `POST` wajib: sesi login (401 tanpa cookie), `Origin`/`Referer` sama dengan `Host`
+(403 kalau beda), dan body `application/json` (bukan JSON → 400). Rate limit 40 mutasi /
+60 detik per IP+pengguna (429 + pesan). Mutasi **tidak pernah** menulis `kanban.db`
+langsung — selalu subprocess `hermes kanban`.
 
-- **Read-only**: setiap koneksi dibuka `sqlite3.connect("file:…?mode=ro", uri=True)` dengan
-  timeout kecil + **retry sekali** kalau DB sedang terkunci (WAL). Tidak ada satu pun jalur
-  tulis ke `kanban.db`.
-- `slug` divalidasi `^[a-z0-9][a-z0-9_-]{0,63}$` (huruf besar dinormalkan ke kecil) dan
-  `id` task divalidasi regex; slug yang tidak sah → **400**, board tidak dikenal → **404**,
-  jadi `slug=../../etc` ditolak 400 dan bukan 500. Path DB juga dicek `relative_to()` ke
-  direktori `boards/` sebagai sabuk pengaman kedua.
-- Lokasi papan mengikuti Hermes: `default` = `<root>/kanban.db`, board lain =
-  `<root>/kanban/boards/<slug>/kanban.db`, board aktif dari `<root>/kanban/current`
-  (`<root>` = `~/.hermes`). Pin `HERMES_KANBAN_DB`/`HERMES_KANBAN_BOARD` sengaja **tidak**
-  dipakai — itu penanda worker (satu papan), sedangkan halaman ini melihat semua papan.
-- `worker_alive` = status `running` **dan** `/proc/<pid>` ada. Tidak ada dependensi baru
-  (stdlib Python + JS bawaan browser, tanpa CDN).
+**`POST /api/agents/task-create`** → `201`
+
+```json
+{"slug":"proyek","title":"Buat hello.txt","body":"…","assignee":"default",
+ "priority":2,"workspace":"scratch","triage":false,"parent":"t_1a2b3c4d"}
+```
+
+`title` wajib ≤200 (tidak boleh diawali `-`), `body` ≤20000, `assignee` harus ada di
+`kanban assignees` atau `"none"`, `priority` 0–5, `workspace` = `scratch` |
+`worktree` | `worktree:/abs/path` | `dir:/abs/path`, `triage` opsional, `parent` opsional
+(anak dari task terbuka lahir di `Todo`). Respons:
+
+```json
+{"ok":true,"action":"create","board":"proyek","id":"t_1a2b3c4d","status":"ready",
+ "task":{…},"message":"Task t_1a2b3c4d dibuat (status ready)."}
+```
+
+**`POST /api/agents/task-update`** → `200`
+
+```json
+{"slug":"proyek","id":"t_1a2b3c4d","action":"block",
+ "reason":"butuh kredensial staging","kind":"needs_input"}
+```
+
+| `action` | Field | CLI |
+|---|---|---|
+| `assign` | `assignee` (nama profil atau `"none"`) | `assign <id> <profil>` |
+| `promote` | `reason?` | `promote <id> [reason]` |
+| `block` | `reason` (wajib ≤500), `kind?` (`needs_input`/`capability`/`dependency`/`transient`) | `block --kind=<k> <id> -- <alasan>` |
+| `unblock` | `reason?` | `unblock --reason=<r> <id>` |
+| `complete` | `result?` ≤4000, `force?` | `complete --result=<r> [--force] <id>` |
+| `archive` | – | `archive <id>` |
+| `review` | `summary?`, `reviewer?`, `force?` | `request-review --summary=<s> <id>` |
+| `reopen` | `reason?` | `reopen-review --reason=<r> <id>` |
+| `comment` | `text` (wajib ≤8000) | `comment <id> -- <teks>` |
+| `edit` | `title?`/`body?`/`priority?` (min satu) | `edit <id> --title=… --body=… --priority=…` |
+| `set-model` | `model` (atau `"none"`), `provider?` | `set-model [--provider=<p>] <id> <model>` |
+
+Respons memuat `{ok, action, board, id, status, previous_status, task, message}`;
+`message` adalah keluaran CLI apa adanya (mis. `Blocked t_…: alasan`). Kode galat:
+400 validasi, 403 origin, 404 board/task tidak ada, 409 CLI menolak transisi (mis.
+`promote` saat induk belum selesai, `complete` tanpa bukti hasil), 429 rate limit,
+502/503 CLI rusak/tidak ada, 504 timeout (60 dtk).
+
+**`POST /api/agents/board-create`** → `201`
+
+```json
+{"slug":"proyek-baru","name":"Proyek Baru"}
+```
+
+Slug `^[a-z0-9][a-z0-9_-]{0,63}$`; nama ≤80 (default = Title Case slug). Board dibuat
+tanpa mengubah board aktif global. Duplikat → 409.
+
+### Keamanan & alasan desain
+
+- **Kenapa lewat CLI, bukan tulis DB.** Status bukan sekadar kolom: `promote` menandai task
+  siap di-claim, `complete` menutup run worker, `block` mencatat `block_kind` + event, dan
+  dispatcher gateway memakai invariant yang sama (parent dependency, anti-loop block,
+  claim/lock). `INSERT/UPDATE` langsung akan melewati semua itu — papan tampak berubah tapi
+  worker tidak pernah dijadwalkan, dan event/hook lifecycle hilang.
+- **argv list, tanpa `shell=True`.** Nilai dari klien masuk sebagai satu argumen; flag
+  tidak pernah berasal dari klien (klien hanya memilih `action` dari whitelist, server yang
+  memetakan ke flag tetap). Nilai yang diawali `-` dipisah dengan `--` atau dikirim sebagai
+  `--flag=nilai`; judul yang diawali `-` ditolak 400.
+- **Env child disusun eksplisit** (`HERMES_HOME`, `HOME`, `PATH`, `LANG`, `PYTHONIOENCODING`)
+  — tidak ada API key/sesi gateway yang diwarisi proses anak.
+- **Validasi ketat**: slug & id task regex, assignee harus ada di daftar profil, priority
+  integer 0–5, panjang judul/body/komentar/alasan dibatasi, `action` whitelist, `kind`
+  whitelist, path workspace absolut tanpa `..`.
+- **Timeout & stderr terpotong**: subprocess dibatasi 60 detik (504 kalau lewat), stderr
+  dipotong 600 karakter dan di-scrub (`api_key=`, `token=`, `sk-…`) sebelum dikirim ke
+  browser. Handler menangkap semua exception → tidak ada request yang menggantung.
+- Setiap panggilan CLI butuh ±4 detik (startup Python), jadi UI menampilkan status sibuk dan
+  pesan hasil; kegagalan CLI muncul sebagai toast berisi pesan aslinya.
 
 ## Workspace (`/workspace`) — kantor virtual realtime
 
@@ -493,7 +587,7 @@ yang bisa menyetujui permintaan itu.
 |---|---|
 | `server.py` | Server + reverse proxy + login + unggah/ekstraksi lampiran (stdlib Python saja) + endpoint `/api/agents/*` |
 | `static/index.html` | Seluruh UI chat (HTML + CSS + JS, tanpa CDN): sidebar percakapan, lampiran, lightbox |
-| `static/agents.html` | Halaman **Pemantau Agent** (`/agents`) — papan kanban, mobile-first |
+| `static/agents.html` | Halaman **Papan Kanban** (`/agents`) — papan 7 kolom yang bisa ditulis (drag/aksi via CLI), mobile-first |
 | `static/workspace.html` | Halaman **Workspace** (`/workspace`) — kantor virtual realtime (sprite SVG + animasi CSS) |
 | `static/login.html` | Halaman login |
 | `uploads/` | Lampiran terunggah (gambar + dokumen), dibuat otomatis, `0700`, **tidak** di-commit |
@@ -516,10 +610,13 @@ tidak ada kredensial di localStorage — berbeda dengan menembak 8642 langsung d
 Percakapan memakai header `X-Hermes-Session-Id`, jadi sesi, transcript, dan memory
 Hermes berlanjut antar pesan, bukan mulai dari nol setiap kali.
 
-Halaman **Pemantau Agent** (`/agents`) dan **Workspace** (`/workspace`) tidak lewat gateway
-sama sekali: `server.py` membaca file SQLite kanban Hermes langsung (read-only) dan
-memeriksa `/proc/<pid>` untuk liveness. Jadi keduanya tetap bisa dibuka walau API server
-sedang mati — yang tidak jalan hanya halaman chat-nya.
+Halaman **Papan Kanban** (`/agents`) dan **Workspace** (`/workspace`) tidak lewat gateway:
+`server.py` membaca file SQLite kanban Hermes langsung (read-only) dan memeriksa
+`/proc/<pid>` untuk liveness, jadi keduanya tetap bisa dibuka walau API server sedang mati —
+yang tidak jalan hanya halaman chat-nya. Khusus **mutasi** papan (buat task, promote, block,
+complete, komentar, board baru), `server.py` memanggil CLI `hermes kanban` sebagai subprocess
+(lihat bagian *Papan Kanban → Keamanan*); dispatcher yang men-spawn worker tetap milik
+gateway, bukan proses webchat.
 
 ## Prasyarat yang wajib
 

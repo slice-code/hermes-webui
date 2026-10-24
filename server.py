@@ -824,6 +824,477 @@ def _agent_limit(query: dict) -> int:
     return max(1, min(AGENT_MAX_LIMIT, value))
 
 
+# ---------------------------------------------------------------------------
+# Papan kanban: jalur TULIS lewat CLI `hermes kanban`
+#
+# Kenapa subprocess, bukan INSERT/UPDATE ke kanban.db: transisi status bukan
+# sekadar kolom. `complete` menutup run worker, `promote` menaikkan task ke
+# ready, `block` mencatat block_kind + event, dan dispatcher gateway memakai
+# invariant yang sama. Menulis DB sendiri berarti melewati claim/lock, event,
+# dan hook lifecycle — board akan tampak berubah tapi worker tidak pernah
+# dijadwalkan. Jadi CLI adalah satu-satunya jalur mutasi.
+#
+# Keamanan:
+#   * argv selalu LIST (tanpa shell=True) → tidak ada string yang dirakit jadi
+#     perintah; nilai dari klien hanya masuk sebagai satu argumen.
+#   * flag TIDAK pernah berasal dari klien; klien hanya memilih aksi dari
+#     whitelist, server yang memetakan ke flag tetap.
+#   * env child disusun eksplisit (allowlist) → tidak ada API key/sesi gateway
+#     yang ikut ke proses anak.
+#   * batas waktu subprocess + stderr dipotong & di-scrub sebelum dikirim balik.
+# ---------------------------------------------------------------------------
+
+KANBAN_BIN = (os.environ.get("WEBCHAT_KANBAN_BIN")
+              or "/root/.hermes/hermes-agent/.hermes/bin/hermes")
+KANBAN_TIMEOUT = float(os.environ.get("WEBCHAT_KANBAN_TIMEOUT", "60"))
+AGENT_TITLE_MAX = 200
+AGENT_COMMENT_MAX = 8000
+AGENT_REASON_MAX = 500
+AGENT_RESULT_MAX = 4000
+AGENT_SUMMARY_MAX = 4000
+AGENT_JSON_MAX = 96 * 1024
+AGENT_PRIORITY_MIN, AGENT_PRIORITY_MAX = 0, 5
+AGENT_MUTATE_LIMIT = int(os.environ.get("WEBCHAT_MUTATE_LIMIT", "40"))
+AGENT_MUTATE_WINDOW = 60
+AGENT_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,120}$")
+AGENT_PROVIDER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+AGENT_ASSIGNEE_TTL = 30.0
+KANBAN_ACTIONS = ("assign", "promote", "block", "unblock", "complete", "archive",
+                  "review", "reopen", "comment", "edit", "set-model")
+KANBAN_BLOCK_KINDS = ("capability", "dependency", "needs_input", "transient")
+AGENT_WORKSPACE_KINDS = ("scratch", "worktree")
+
+_assignee_lock = threading.Lock()
+_assignee_cache: dict = {"at": 0.0, "items": []}
+_mutate_lock = threading.Lock()
+_mutate_hits: dict = {}
+
+
+class KanbanError(Exception):
+    """Kesalahan yang sudah dipetakan ke kode HTTP + pesan untuk klien."""
+
+    def __init__(self, status: int, message: str, detail: str = "") -> None:
+        super().__init__(message)
+        self.status = int(status)
+        self.message = message
+        self.detail = detail
+
+
+def board_slug_problem(slug: str) -> str:
+    """Pesan kesalahan slug, atau string kosong kalau sah."""
+    if not slug:
+        return "Parameter slug wajib diisi."
+    if not BOARD_SLUG_RE.match(slug):
+        return ("Slug hanya boleh huruf kecil, angka, tanda hubung, dan garis bawah "
+                "(maksimal 64 karakter, tidak diawali tanda hubung).")
+    return ""
+
+
+def _kanban_env() -> dict:
+    """Env minimal untuk CLI: HERMES_HOME eksplisit, tanpa kredensial gateway."""
+    return {
+        "HERMES_HOME": str(HERMES_HOME),
+        "HOME": os.environ.get("HOME") or str(Path.home()),
+        "PATH": os.environ.get("PATH") or "/usr/local/bin:/usr/bin:/bin",
+        "LANG": os.environ.get("LANG") or "C.UTF-8",
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONUNBUFFERED": "1",
+        "TERM": "dumb",
+    }
+
+
+def _kanban_scrub(text: str, limit: int = 600) -> str:
+    """Potong + samarkan kemungkinan rahasia sebelum teks CLI dikirim ke klien."""
+    value = (text or "").strip()
+    value = re.sub(r"(?i)\b(api[_-]?key|token|secret|password|bearer)\b\s*[=:]?\s*\S+",
+                   r"\1=***", value)
+    value = re.sub(r"\bsk-[A-Za-z0-9_-]{8,}", "sk-***", value)
+    return value[:limit]
+
+
+def _kanban_line(text: str) -> str:
+    """Baris pertama yang tidak kosong — dipakai sebagai pesan error singkat."""
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if line:
+            return _kanban_scrub(line, 300)
+    return ""
+
+
+def _kanban_launcher_python(binary: Path) -> Path | None:
+    """Interpreter yang dieksekusi launcher shell `hermes` (baris `exec …`), kalau ada."""
+    try:
+        lines = binary.read_text(encoding="utf-8", errors="replace").splitlines()[:4]
+    except OSError:
+        return None
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("exec "):
+            continue
+        token = line[5:].split()[0].strip("'\"")
+        if token.startswith("/"):
+            return Path(token)
+    return None
+
+
+def _kanban_store_python() -> Path | None:
+    """Python store milik home ini (`<root>/tools/python-*/bin/python3`)."""
+    try:
+        for path in sorted((_hermes_root() / "tools").glob("python-*/bin/python3")):
+            if path.is_file():
+                return path
+    except OSError:
+        return None
+    return None
+
+
+def _kanban_bootstrap(root: Path) -> str:
+    """Kode `-c` yang setara dengan ekor launcher: jalankan `hermes_cli.main`."""
+    return ("import sys; sys.path.insert(0, %r); from hermes_cli.main import main; "
+            "sys.argv[0] = 'hermes'; raise SystemExit(main())" % str(root))
+
+
+def kanban_run(args: list, *, timeout: float = KANBAN_TIMEOUT,
+               stdin_text: str | None = None) -> subprocess.CompletedProcess:
+    """Jalankan `hermes kanban <args>` dengan argv list. Tidak pernah shell=True."""
+    binary = Path(KANBAN_BIN)
+    if not binary.is_file():
+        raise KanbanError(503, "CLI kanban tidak ditemukan",
+                          "Biner tidak ada di %s. Set WEBCHAT_KANBAN_BIN." % KANBAN_BIN)
+    argv = [str(binary), "kanban"] + [str(a) for a in args]
+    interpreter = _kanban_launcher_python(binary)
+    if interpreter is not None and not interpreter.is_file():
+        # Launcher shell menunjuk interpreter yang sudah tidak ada (pernah ditulis
+        # ulang oleh proses lain yang memakai HERMES_HOME sementara). Jangan
+        # menyentuh file launcher bersama itu: jalankan modul yang sama lewat
+        # python store milik home ini.
+        store = _kanban_store_python()
+        if store is None:
+            raise KanbanError(
+                503, "launcher `hermes` menunjuk interpreter yang hilang",
+                "%s tidak ada. Jalankan `hermes` sekali dari shell untuk memperbaiki launcher."
+                % interpreter)
+        argv = [str(store), "-c", _kanban_bootstrap(_hermes_root() / "hermes-agent"),
+                "kanban"] + [str(a) for a in args]
+    try:
+        return subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=_kanban_env(),
+            cwd=str(HERMES_HOME),
+            input="" if stdin_text is None else stdin_text,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise KanbanError(
+            504, "perintah kanban melebihi %.0f detik" % timeout,
+            "Task mungkin masih diproses. Muat ulang papan, lalu cek "
+            "`hermes kanban diagnostics` kalau berulang.",
+        ) from exc
+    except OSError as exc:
+        raise KanbanError(502, "CLI kanban gagal dijalankan",
+                          _kanban_scrub("%s: %s" % (type(exc).__name__, exc))) from exc
+
+
+def kanban_json(args: list, *, timeout: float = KANBAN_TIMEOUT,
+                stdin_text: str | None = None):
+    """Jalankan perintah kanban yang mendukung `--json` dan kembalikan hasil parse."""
+    proc = kanban_run(args, timeout=timeout, stdin_text=stdin_text)
+    out = (proc.stdout or "").strip()
+    if proc.returncode != 0:
+        err = (proc.stderr or "").strip()
+        raise KanbanError(409, _kanban_line(err or out) or "kanban menolak perintah",
+                          _kanban_scrub((err + "\n" + out).strip()))
+    try:
+        return json.loads(out)
+    except ValueError:
+        raise KanbanError(502, "keluaran CLI kanban bukan JSON",
+                          _kanban_scrub(out or (proc.stderr or ""))) from None
+
+
+def kanban_assignee_items(*, force: bool = False) -> list:
+    """Daftar profil assignee dari CLI, di-cache sebentar (tiap panggilan ~4 dtk)."""
+    now = time.time()
+    with _assignee_lock:
+        cached = list(_assignee_cache["items"])
+        fresh = (now - float(_assignee_cache["at"] or 0)) < AGENT_ASSIGNEE_TTL
+    if cached and fresh and not force:
+        return cached
+    data = kanban_json(["assignees", "--json"])
+    if not isinstance(data, list):
+        raise KanbanError(502, "keluaran `kanban assignees` tidak dikenali",
+                          _kanban_scrub(str(data)))
+    items = [item for item in data if isinstance(item, dict) and item.get("name")]
+    with _assignee_lock:
+        _assignee_cache["at"] = time.time()
+        _assignee_cache["items"] = items
+    return list(items)
+
+
+def _kanban_assignee(value, *, required: bool = False) -> str:
+    """Validasi nama profil terhadap daftar assignee CLI. 'none' = lepas assignee."""
+    text = str(value or "").strip()
+    if not text:
+        if required:
+            raise KanbanError(400, "assignee wajib diisi", "Pilih profil dari daftar.")
+        return ""
+    if text.lower() == "none":
+        return "none"
+    names = [str(i.get("name")) for i in kanban_assignee_items()]
+    if text not in names:
+        raise KanbanError(400, "profil '%s' tidak dikenal" % text,
+                          "Profil tersedia: " + (", ".join(names) or "(belum ada profil)"))
+    return text
+
+
+def _kanban_text(value, field: str, *, max_len: int, required: bool = False) -> str:
+    if value is None:
+        value = ""
+    if not isinstance(value, str):
+        raise KanbanError(400, "%s harus berupa teks" % field)
+    if "\x00" in value:
+        raise KanbanError(400, "%s mengandung karakter terlarang" % field)
+    text = value.strip()
+    if len(text) > max_len:
+        raise KanbanError(400, "%s maksimal %d karakter (sekarang %d)"
+                          % (field, max_len, len(text)))
+    if required and not text:
+        raise KanbanError(400, "%s wajib diisi" % field)
+    return text
+
+
+def _kanban_title(value) -> str:
+    text = _kanban_text(value, "judul", max_len=AGENT_TITLE_MAX, required=True)
+    if text.startswith("-"):
+        # argv list tidak di-escape; judul berawalan '-' bisa dibaca CLI sebagai flag.
+        raise KanbanError(400, "judul tidak boleh diawali tanda hubung",
+                          "Awali dengan huruf atau angka.")
+    return text
+
+
+def _kanban_priority(value) -> int:
+    if value is None or value == "":
+        return 0
+    if isinstance(value, bool):
+        raise KanbanError(400, "priority harus angka bulat 0–5")
+    if isinstance(value, str) and value.strip().lstrip("+-").isdigit():
+        value = int(value.strip())
+    if not isinstance(value, int):
+        raise KanbanError(400, "priority harus angka bulat 0–5")
+    if not AGENT_PRIORITY_MIN <= value <= AGENT_PRIORITY_MAX:
+        raise KanbanError(400, "priority harus di antara 0 dan 5", "Diterima: %d" % value)
+    return int(value)
+
+
+def _kanban_workspace(value) -> str:
+    text = str(value or "scratch").strip()
+    if text in AGENT_WORKSPACE_KINDS:
+        return text
+    for prefix in ("worktree:", "dir:"):
+        if text.startswith(prefix):
+            path = text[len(prefix):].strip()
+            parts = path.split("/")
+            if (not path.startswith("/") or "\x00" in path or ".." in parts
+                    or len(text) > 400):
+                raise KanbanError(400, "path workspace tidak valid",
+                                  "Harus path absolut tanpa '..', maksimal 400 karakter.")
+            return text
+    raise KanbanError(400, "workspace tidak dikenal",
+                      "Pilih scratch, worktree, worktree:<path absolut>, atau dir:<path absolut>.")
+
+
+def _kanban_model(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise KanbanError(400, "model wajib diisi", "Kirim 'none' untuk melepas override.")
+    if text.lower() == "none":
+        return "none"
+    if not AGENT_MODEL_RE.match(text):
+        raise KanbanError(400, "nama model tidak valid",
+                          "Huruf/angka serta . _ : / @ + - (maks 121 karakter).")
+    return text
+
+
+def _kanban_block_kind(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text not in KANBAN_BLOCK_KINDS:
+        raise KanbanError(400, "jenis block tidak dikenal",
+                          "Pilih salah satu: " + ", ".join(KANBAN_BLOCK_KINDS))
+    return text
+
+
+def _kanban_positional(value: str) -> list:
+    """Argumen posisional bebas: kalau berawalan '-', sisipkan pemisah `--`."""
+    return (["--", value] if value.startswith("-") else [value])
+
+
+def kanban_task_args(action: str, task_id: str, data: dict) -> list:
+    """Peta aksi klien → argv tetap. Tidak ada flag yang berasal dari klien."""
+    if action == "assign":
+        who = _kanban_assignee(data.get("assignee"), required=True)
+        return ["assign", task_id, who]
+    if action == "promote":
+        args = ["promote", task_id]
+        reason = _kanban_text(data.get("reason"), "alasan", max_len=AGENT_REASON_MAX)
+        return args + _kanban_positional(reason) if reason else args
+    if action == "block":
+        kind = _kanban_block_kind(data.get("kind"))
+        reason = _kanban_text(data.get("reason"), "alasan", max_len=AGENT_REASON_MAX,
+                              required=True)
+        args = ["block"]
+        if kind:
+            args.append("--kind=" + kind)
+        args.append(task_id)
+        return args + _kanban_positional(reason)
+    if action == "unblock":
+        args = ["unblock", task_id]
+        reason = _kanban_text(data.get("reason"), "alasan", max_len=AGENT_REASON_MAX)
+        if reason:
+            args = ["unblock", "--reason=" + reason, task_id]
+        return args
+    if action == "complete":
+        result = _kanban_text(data.get("result"), "result", max_len=AGENT_RESULT_MAX)
+        args = ["complete"]
+        if result:
+            args.append("--result=" + result)
+        if bool(data.get("force")):
+            args.append("--force")
+        return args + [task_id]
+    if action == "archive":
+        return ["archive", task_id]
+    if action == "review":
+        args = ["request-review"]
+        summary = _kanban_text(data.get("summary"), "ringkasan", max_len=AGENT_SUMMARY_MAX)
+        if summary:
+            args.append("--summary=" + summary)
+        if data.get("reviewer"):
+            args.append("--reviewer=" + _kanban_assignee(data.get("reviewer"), required=True))
+        if bool(data.get("force")):
+            args.append("--force")
+        return args + [task_id]
+    if action == "reopen":
+        args = ["reopen-review"]
+        reason = _kanban_text(data.get("reason"), "alasan", max_len=AGENT_REASON_MAX)
+        if reason:
+            args.append("--reason=" + reason)
+        return args + [task_id]
+    if action == "comment":
+        text = _kanban_text(data.get("text"), "komentar", max_len=AGENT_COMMENT_MAX,
+                            required=True)
+        return ["comment", task_id] + _kanban_positional(text)
+    if action == "edit":
+        args = ["edit", task_id]
+        touched = False
+        if "title" in data and data.get("title") not in (None, ""):
+            args.append("--title=" + _kanban_title(data.get("title")))
+            touched = True
+        if "body" in data and data.get("body") is not None:
+            args.append("--body=" + _kanban_text(data.get("body"), "deskripsi",
+                                                 max_len=AGENT_BODY_MAX))
+            touched = True
+        if "priority" in data and data.get("priority") not in (None, ""):
+            args.append("--priority=%d" % _kanban_priority(data.get("priority")))
+            touched = True
+        if not touched:
+            raise KanbanError(400, "tidak ada yang diedit",
+                              "Kirim minimal satu dari title, body, atau priority.")
+        return args
+    if action == "set-model":
+        args = ["set-model", task_id, _kanban_model(data.get("model"))]
+        provider = str(data.get("provider") or "").strip()
+        if provider:
+            if not AGENT_PROVIDER_RE.match(provider):
+                raise KanbanError(400, "nama provider tidak valid",
+                                  "Huruf/angka serta . _ - (maks 64 karakter).")
+            args = ["set-model", "--provider=" + provider, task_id,
+                    _kanban_model(data.get("model"))]
+        return args
+    raise KanbanError(400, "action tidak dikenal",
+                      "Pilih salah satu: " + ", ".join(KANBAN_ACTIONS))
+
+
+def kanban_mutate(slug: str, action: str, task_id: str, data: dict) -> dict:
+    """Jalankan satu mutasi task; kembalikan pesan sukses dari CLI apa adanya."""
+    args = ["--board", slug] + kanban_task_args(action, task_id, data)
+    proc = kanban_run(args)
+    out = (proc.stdout or "").strip()
+    err = (proc.stderr or "").strip()
+    if proc.returncode != 0:
+        raise KanbanError(409, _kanban_line(err or out) or "kanban menolak aksi",
+                          _kanban_scrub((err + "\n" + out).strip()))
+    return {"message": _kanban_scrub(out or err, 500)}
+
+
+def kanban_create(slug: str, data: dict) -> dict:
+    """Buat task lewat `kanban create`; body dikirim via stdin (aman untuk '-')."""
+    title = _kanban_title(data.get("title"))
+    body = _kanban_text(data.get("body"), "deskripsi", max_len=AGENT_BODY_MAX)
+    priority = _kanban_priority(data.get("priority"))
+    workspace = _kanban_workspace(data.get("workspace"))
+    args = ["--board", slug, "create", title, "--body-file=-",
+            "--priority=%d" % priority, "--workspace=" + workspace, "--json"]
+    assignee = _kanban_assignee(data.get("assignee"))
+    if assignee and assignee != "none":
+        args.append("--assignee=" + assignee)
+    parent = str(data.get("parent") or "").strip()
+    if parent:
+        if not TASK_ID_RE.match(parent):
+            raise KanbanError(400, "id task induk tidak valid", "Contoh: t_1a2b3c4d")
+        if agent_task_payload(slug, parent) is None:
+            raise KanbanError(404, "task induk tidak ditemukan", parent)
+        # Anak dari task yang belum selesai lahir di `todo`, bukan `ready`.
+        args.append("--parent=" + parent)
+    if bool(data.get("triage")):
+        args.append("--triage")
+    payload = kanban_json(args, stdin_text=body)
+    task_id = str(payload.get("id") or "") if isinstance(payload, dict) else ""
+    if task_id and TASK_ID_RE.match(task_id):
+        fresh = agent_task_payload(slug, task_id)
+        if fresh and isinstance(fresh.get("task"), dict):
+            return fresh["task"]
+    if not isinstance(payload, dict):
+        raise KanbanError(502, "keluaran `kanban create` tidak dikenali",
+                          _kanban_scrub(str(payload)))
+    return payload
+
+
+def kanban_board_create(data: dict) -> dict:
+    """Buat board baru (`kanban boards create`); tanpa mengubah board aktif."""
+    slug = str(data.get("slug") or "").strip().lower()
+    problem = board_slug_problem(slug)
+    if problem:
+        raise KanbanError(400, "slug board tidak valid", problem)
+    name = _kanban_text(data.get("name"), "nama board", max_len=80) or _display_name(slug)
+    args = ["boards", "create", slug, "--name=" + name]
+    proc = kanban_run(args)
+    out = (proc.stdout or "").strip()
+    err = (proc.stderr or "").strip()
+    if proc.returncode != 0:
+        raise KanbanError(409, _kanban_line(err or out) or "board gagal dibuat",
+                          _kanban_scrub((err + "\n" + out).strip()))
+    return {"board": _board_meta(slug), "message": _kanban_scrub(out, 500)}
+
+
+def mutate_allowed(key: str) -> bool:
+    """Rate limit sederhana per pengguna+IP: AGENT_MUTATE_LIMIT aksi / menit."""
+    now = time.time()
+    with _mutate_lock:
+        hits = [t for t in _mutate_hits.get(key, []) if now - t < AGENT_MUTATE_WINDOW]
+        if len(hits) >= AGENT_MUTATE_LIMIT:
+            _mutate_hits[key] = hits
+            return False
+        hits.append(now)
+        _mutate_hits[key] = hits
+        if len(_mutate_hits) > 500:                  # buang kunci basi
+            for stale in [k for k, v in _mutate_hits.items() if not v or now - v[-1] > 300]:
+                _mutate_hits.pop(stale, None)
+        return True
+
+
 def _pid_alive(pid) -> bool:
     try:
         return bool(pid) and Path("/proc/%d" % int(pid)).is_dir()
@@ -1518,7 +1989,8 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/uploads/"):
             return self._serve_upload(path[len("/api/uploads/"):])
         if path in ("/api/agents/boards", "/api/agents/board", "/api/agents/task",
-                    "/api/agents/live"):
+                    "/api/agents/live", "/api/agents/assignees",
+                    "/api/agents/dispatch-preview"):
             if not self._same_origin():
                 return self._fail(403, "cross-origin ditolak")
             return self._api_agents(path)
@@ -1560,6 +2032,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail(403, "cross-origin ditolak", extra_headers=[("Connection", "close")])
         if path == "/api/upload":
             return self._do_upload()
+        # Papan kanban: mutasi task/board (lewat CLI `hermes kanban`).
+        if path in ("/api/agents/task-create", "/api/agents/task-update",
+                    "/api/agents/board-create"):
+            return self._api_agents_post(path)
         if path == "/v1/chat/completions":
             return self._proxy_chat()
         # Kontrol run: buat run, jawab approval, stop, steer. Semuanya JSON pendek,
@@ -1939,6 +2415,30 @@ class Handler(BaseHTTPRequestHandler):
                 if not check_slug():
                     return None
                 return self._json(200, agent_live_payload(slug))
+
+            if path == "/api/agents/assignees":
+                # Daftar profil yang boleh jadi assignee. Dipakai modal "Task baru"
+                # dan validasi server; cache 30 dtk karena CLI butuh ~4 dtk per panggilan.
+                items = kanban_assignee_items()
+                names = [str(i.get("name")) for i in items]
+                note = ""
+                if len(names) == 1:
+                    note = ("Baru ada satu profil (%s). Worker dijalankan oleh profil itu; "
+                            "tambah profil dengan `hermes profile create <nama>`." % names[0])
+                return self._json(200, {"assignees": items, "count": len(names),
+                                        "single": len(names) == 1, "note": note,
+                                        "generated_at": int(time.time())})
+
+            if path == "/api/agents/dispatch-preview":
+                # Pratinjau SATU pass dispatcher (dry-run). Tidak men-spawn worker:
+                # eksekusi nyata tetap milik dispatcher gateway.
+                if not check_slug():
+                    return None
+                preview = kanban_json(["--board", slug, "dispatch", "--dry-run", "--json"])
+                return self._json(200, {"board": slug, "generated_at": int(time.time()),
+                                        "preview": preview})
+        except KanbanError as exc:
+            return self._fail(exc.status, exc.message, exc.detail)
         except ValueError as exc:
             return self._fail(400, "permintaan tidak valid", str(exc))
         except Exception as exc:  # noqa: BLE001 - jangan biarkan UI kosong tanpa sebab
@@ -1949,12 +2449,101 @@ class Handler(BaseHTTPRequestHandler):
     @staticmethod
     def _board_slug_error(slug: str) -> str:
         """Pesan kesalahan slug, atau string kosong kalau sah."""
-        if not slug:
-            return "Parameter slug wajib diisi."
-        if not BOARD_SLUG_RE.match(slug):
-            return ("Slug hanya boleh huruf kecil, angka, tanda hubung, dan garis bawah "
-                    "(maksimal 64 karakter, tidak diawali tanda hubung).")
-        return ""
+        return board_slug_problem(slug)
+
+    # -- papan kanban: mutasi (POST) -------------------------------------
+
+    def _json_body(self) -> dict:
+        """Baca body JSON dengan batas ukuran. Gagal → KanbanError 400/413."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            length = -1
+        if length <= 0:
+            raise KanbanError(400, "body JSON wajib diisi",
+                              "Kirim objek JSON, mis. {\"title\": \"...\"}.")
+        if length > AGENT_JSON_MAX:
+            self.close_connection = True
+            raise KanbanError(413, "body terlalu besar",
+                              "Maksimal %d KB." % (AGENT_JSON_MAX // 1024))
+        raw = self.rfile.read(length)
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            raise KanbanError(400, "body bukan JSON yang valid",
+                              "Content-Type harus application/json dan body harus JSON.") from None
+        if not isinstance(data, dict):
+            raise KanbanError(400, "body JSON harus berupa objek",
+                              "Array/angka/string tidak diterima.")
+        return data
+
+    def _api_agents_post(self, path: str) -> None:
+        """POST /api/agents/{task-create,task-update,board-create}.
+
+        Autentikasi + cek same-origin sudah dilakukan do_POST sebelum ke sini.
+        Semua mutasi lewat CLI `hermes kanban` (lihat kanban_run): tidak ada
+        penulisan langsung ke kanban.db dari handler ini.
+        """
+        try:
+            data = self._json_body()
+            key = "%s|%s" % (self.address_string(), self._user() or "-")
+            if not mutate_allowed(key):
+                raise KanbanError(429, "terlalu banyak perubahan",
+                                  "Maksimal %d aksi per %d detik. Coba lagi sebentar."
+                                  % (AGENT_MUTATE_LIMIT, AGENT_MUTATE_WINDOW))
+
+            if path == "/api/agents/board-create":
+                result = kanban_board_create(data)
+                return self._json(201, {"ok": True, "action": "board-create",
+                                        "board": result["board"],
+                                        "message": result["message"]})
+
+            slug = str(data.get("slug") or "").strip().lower() or _current_board()
+            problem = board_slug_problem(slug)
+            if problem:
+                raise KanbanError(400, "slug board tidak valid", problem)
+            if not _board_exists(slug):
+                raise KanbanError(404, "board tidak ditemukan", slug)
+            if _board_meta(slug).get("archived"):
+                raise KanbanError(404, "board sudah diarsipkan", slug)
+
+            if path == "/api/agents/task-create":
+                task = kanban_create(slug, data)
+                task_id = str(task.get("id") or "")
+                return self._json(201, {
+                    "ok": True, "action": "create", "board": slug, "id": task_id,
+                    "task": task, "status": task.get("status"),
+                    "message": "Task %s dibuat (status %s)." % (task_id, task.get("status")),
+                })
+
+            if path == "/api/agents/task-update":
+                action = str(data.get("action") or "").strip()
+                if action not in KANBAN_ACTIONS:
+                    raise KanbanError(400, "action tidak dikenal",
+                                      "Pilih salah satu: " + ", ".join(KANBAN_ACTIONS))
+                task_id = str(data.get("id") or "").strip()
+                if not TASK_ID_RE.match(task_id):
+                    raise KanbanError(400, "id task tidak valid",
+                                      "Contoh yang benar: t_1a2b3c4d")
+                before = agent_task_payload(slug, task_id)
+                if before is None:
+                    raise KanbanError(404, "task tidak ditemukan", task_id)
+                result = kanban_mutate(slug, action, task_id, data)
+                after = agent_task_payload(slug, task_id)
+                task = (after or {}).get("task") if after else None
+                return self._json(200, {
+                    "ok": True, "action": action, "board": slug, "id": task_id,
+                    "task": task, "status": (task or {}).get("status"),
+                    "previous_status": ((before or {}).get("task") or {}).get("status"),
+                    "message": result["message"] or "Aksi %s berhasil." % action,
+                })
+
+            raise KanbanError(404, "not found", path)
+        except KanbanError as exc:
+            return self._fail(exc.status, exc.message, exc.detail)
+        except Exception as exc:  # noqa: BLE001 - jangan biarkan handler menggantung
+            return self._fail(500, "gagal menjalankan aksi kanban",
+                              "%s: %s" % (type(exc).__name__, _kanban_scrub(str(exc))))
 
     # -- proxy -----------------------------------------------------------
 

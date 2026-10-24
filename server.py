@@ -19,18 +19,26 @@ import getpass
 import hashlib
 import hmac
 import json
+import mimetypes
 import os
 import posixpath
 import re
 import secrets
+import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
 import traceback
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
+import xml.etree.ElementTree as ET
+import zipfile
+import zlib
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -100,11 +108,347 @@ _revoked: dict = {}  # nonce sesi yang dicabut (logout) -> exp token
 PUBLIC_PATHS = {"/login", "/healthz", "/favicon.ico"}
 
 # Upload gambar webchat — disimpan di cache lokal, bukan di-proxy ke gateway.
+# Root lama dipertahankan supaya transkrip lama (`/api/image?path=`) tetap tampil.
 WEBCHAT_IMAGES_ROOT = Path("/root/.hermes/cache/webchat-images")
 HERMES_IMAGES_ROOT = Path("/root/.hermes/cache/images")
 _IMAGE_UPLOAD_MAX = 12 * 1024 * 1024
 _IMAGE_UPLOAD_SLACK = 64 * 1024
 _IMAGE_RETENTION_DAYS = 14
+
+# ---------------------------------------------------------------------------
+# Lampiran (gambar + dokumen) — satu jalur unggah
+#
+# API server Hermes hanya menerima part teks dan image_url; "uploaded files and
+# document inputs are not supported on this endpoint". Jadi file disimpan di
+# sini, teksnya diekstrak (docx/xlsx/pptx/pdf/teks), lalu UI yang menyusun
+# prompt teks. Gambar divalidasi dari magic bytes lalu path-nya diberikan ke
+# agent supaya bisa dibaca lewat tool vision_analyze.
+#
+# Semua lampiran (gambar maupun dokumen) memakai satu folder `uploads/` dan satu
+# endpoint POST /api/upload. `/api/image?path=` lama tetap hidup dan ikut
+# menyajikan gambar dari folder ini (lihat _image_path_allowed).
+# ---------------------------------------------------------------------------
+
+UPLOAD_DIR = Path(os.environ.get("WEBCHAT_UPLOAD_DIR") or (HERE / "uploads")).resolve()
+MAX_UPLOAD_MB = int(os.environ.get("WEBCHAT_MAX_UPLOAD_MB", "25"))
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+MAX_TEXT_CHARS = int(os.environ.get("WEBCHAT_MAX_TEXT_CHARS", "60000"))
+MAX_PREVIEW_BYTES = 2 * 1024 * 1024
+
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+TEXT_EXT = {".txt", ".md", ".csv", ".json", ".log"}
+OFFICE_EXT = {".docx", ".xlsx", ".pptx", ".pdf"}
+ALLOWED_EXT = IMAGE_EXT | TEXT_EXT | OFFICE_EXT
+
+_EXT_MIME = {
+    ".md": "text/markdown; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
+    ".log": "text/plain; charset=utf-8",
+    ".csv": "text/csv; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+}
+
+_UNSAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def safe_filename(raw: str) -> str:
+    """Nama file aman: basename saja, tanpa path, tanpa karakter aneh.
+
+    `../../etc/passwd` -> `passwd`; `..\\..\\x.docx` -> `x.docx`.
+    """
+    name = (raw or "").replace("\x00", "").replace("\\", "/")
+    name = name.split("/")[-1].strip()
+    name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
+    name = name.replace(" ", "_")
+    name = _UNSAFE_NAME.sub("_", name)
+    stem, ext = os.path.splitext(name)
+    ext = ext.lower()
+    stem = stem.strip("._-") or "file"
+    stem = re.sub(r"_{2,}", "_", stem)[:80]
+    if ext and not re.fullmatch(r"\.[a-z0-9]{1,8}", ext):
+        ext = ""
+    return stem + ext
+
+
+def _local(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+# -- docx --------------------------------------------------------------------
+
+def _docx_para_text(el) -> str:
+    out = []
+    for node in el.iter():
+        tag = _local(node.tag)
+        if tag == "t":
+            if node.text:
+                out.append(node.text)
+        elif tag == "tab":
+            out.append("\t")
+        elif tag in ("br", "cr"):
+            out.append("\n")
+    return "".join(out)
+
+
+def _docx_lines(root) -> list:
+    """Paragraf jadi baris; tabel jadi baris tab-separated, sesuai urutan dokumen."""
+    body = next((c for c in root if _local(c.tag) == "body"), root)
+    lines: list = []
+
+    def walk(el) -> None:
+        for child in el:
+            tag = _local(child.tag)
+            if tag == "p":
+                lines.append(_docx_para_text(child))
+            elif tag == "tbl":
+                for tr in child:
+                    if _local(tr.tag) != "tr":
+                        continue
+                    cells = []
+                    for tc in tr:
+                        if _local(tc.tag) != "tc":
+                            continue
+                        parts = [_docx_para_text(p) for p in tc if _local(p.tag) == "p"]
+                        cells.append(" ".join(x.strip() for x in parts if x.strip()))
+                    if any(cells):
+                        lines.append("\t".join(cells))
+            elif tag in ("sdt", "sdtContent", "txbxContent"):
+                walk(child)
+
+    walk(body)
+    return lines
+
+
+def _extract_docx(path: Path) -> str:
+    with zipfile.ZipFile(path) as zf:
+        root = ET.fromstring(zf.read("word/document.xml"))
+    return "\n".join(_docx_lines(root))
+
+
+# -- pptx --------------------------------------------------------------------
+
+def _extract_pptx(path: Path) -> str:
+    def num(name: str) -> int:
+        m = re.search(r"(\d+)\.xml$", name)
+        return int(m.group(1)) if m else 0
+
+    with zipfile.ZipFile(path) as zf:
+        slides = sorted((n for n in zf.namelist()
+                         if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)), key=num)
+        out = []
+        for i, name in enumerate(slides, 1):
+            root = ET.fromstring(zf.read(name))
+            out.append("## Slide %d" % i)
+            for para in root.iter("{http://schemas.openxmlformats.org/drawingml/2006/main}p"):
+                text = "".join(t.text or "" for t in para.iter(
+                    "{http://schemas.openxmlformats.org/drawingml/2006/main}t"))
+                if text.strip():
+                    out.append(text)
+    return "\n".join(out)
+
+
+# -- xlsx --------------------------------------------------------------------
+
+_SML = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+
+
+def _extract_xlsx(path: Path) -> str:
+    with zipfile.ZipFile(path) as zf:
+        names = zf.namelist()
+        shared: list = []
+        if "xl/sharedStrings.xml" in names:
+            root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+            shared = ["".join(t.text or "" for t in si.iter(_SML + "t"))
+                      for si in root.iter(_SML + "si")]
+
+        titles: dict = {}
+        try:
+            wb = ET.fromstring(zf.read("xl/workbook.xml"))
+            rels = ET.fromstring(zf.read("xl/_rels/workbook.xml.rels"))
+            targets = {r.get("Id"): (r.get("Target") or "") for r in rels}
+            for sheet in wb.iter(_SML + "sheet"):
+                rid = sheet.get("{http://schemas.openxmlformats.org/officeDocument/"
+                                "2006/relationships}id")
+                target = targets.get(rid, "").lstrip("/")
+                if target and not target.startswith("xl/"):
+                    target = "xl/" + target
+                titles[target] = sheet.get("name") or ""
+        except (KeyError, ET.ParseError):
+            pass
+
+        def num(name: str) -> int:
+            m = re.search(r"(\d+)\.xml$", name)
+            return int(m.group(1)) if m else 0
+
+        sheets = sorted((n for n in names if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n)),
+                        key=num)
+        out = []
+        for name in sheets:
+            out.append("## Sheet: " + (titles.get(name) or Path(name).stem))
+            root = ET.fromstring(zf.read(name))
+            for row in root.iter(_SML + "row"):
+                vals = []
+                for cell in row.iter(_SML + "c"):
+                    kind = cell.get("t")
+                    if kind == "inlineStr":
+                        val = "".join(t.text or "" for t in cell.iter(_SML + "t"))
+                    else:
+                        node = cell.find(_SML + "v")
+                        val = node.text if node is not None and node.text else ""
+                        if kind == "s":
+                            try:
+                                val = shared[int(val)]
+                            except (ValueError, IndexError):
+                                pass
+                    vals.append(val)
+                out.append("\t".join(vals))
+    return "\n".join(out)
+
+
+# -- pdf ---------------------------------------------------------------------
+
+def _extract_pdf(path: Path) -> str:
+    """pdftotext kalau tersedia; kalau tidak, coba stream FlateDecode + regex Tj."""
+    exe = shutil.which("pdftotext")
+    if exe:
+        try:
+            proc = subprocess.run([exe, "-layout", "-enc", "UTF-8", str(path), "-"],
+                                  capture_output=True, timeout=60)
+            if proc.returncode == 0 and proc.stdout.strip():
+                return proc.stdout.decode("utf-8", "replace")
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return ""
+    pieces = []
+    for match in re.finditer(rb"stream\r?\n(.*?)endstream", data, re.S):
+        raw = match.group(1)
+        try:
+            raw = zlib.decompress(raw)
+        except zlib.error:
+            continue
+        for token in re.finditer(rb"\((?:\\.|[^\\()])*\)", raw):
+            text = token.group(0)[1:-1]
+            text = text.replace(rb"\(", b"(").replace(rb"\)", b")").replace(rb"\\", b"\\")
+            pieces.append(text.decode("utf-8", "replace"))
+    return " ".join(p for p in pieces if p.strip())
+
+
+def extract_text(path: Path, ext: str) -> tuple:
+    """(teks, catatan). Tidak pernah melempar — kegagalan jadi catatan."""
+    try:
+        if ext in TEXT_EXT:
+            return path.read_bytes().decode("utf-8", "replace").lstrip("\ufeff"), ""
+        if ext == ".docx":
+            return _extract_docx(path), ""
+        if ext == ".xlsx":
+            return _extract_xlsx(path), ""
+        if ext == ".pptx":
+            return _extract_pptx(path), ""
+        if ext == ".pdf":
+            return _extract_pdf(path), ""
+    except (OSError, KeyError, zipfile.BadZipFile, ET.ParseError) as exc:
+        return "", "gagal mengekstrak teks (%s: %s)" % (type(exc).__name__, exc)
+    except Exception as exc:  # noqa: BLE001 - best effort, jangan sampai 500
+        return "", "gagal mengekstrak teks (%s: %s)" % (type(exc).__name__, exc)
+    return "", "tipe file tidak punya ekstraktor"
+
+
+def build_upload_record(ident: str, name: str, target: Path, size: int) -> dict:
+    ext = target.suffix.lower()
+    kind = "image" if ext in IMAGE_EXT else "text"
+    mime = _EXT_MIME.get(ext) or mimetypes.guess_type(name)[0] or "application/octet-stream"
+    record = {
+        "id": ident,
+        "name": name,
+        "mime": mime,
+        "size": size,
+        "bytes": size,
+        "path": str(target),
+        "url": "/api/uploads/" + ident,
+        "kind": kind,
+        "preview": "",
+        "text": "",
+        "truncated": False,
+        "chars": 0,
+        "note": "",
+    }
+    if kind == "image":
+        if size <= MAX_PREVIEW_BYTES:
+            try:
+                record["preview"] = "data:%s;base64,%s" % (
+                    mime, base64.b64encode(target.read_bytes()).decode("ascii"))
+            except OSError:
+                record["preview"] = ""
+        return record
+
+    text, note = extract_text(target, ext)
+    text = text.replace("\x00", "")
+    record["note"] = note
+    record["chars"] = len(text)
+    if len(text) > MAX_TEXT_CHARS:
+        text = text[:MAX_TEXT_CHARS]
+        record["truncated"] = True
+    record["text"] = text
+    return record
+
+
+def parse_multipart(body: bytes, content_type: str):
+    """(fields, files) dari body multipart/form-data — parser byte-level kecil.
+
+    Tidak memakai modul `cgi` (dihapus di Python 3.13) dan tidak memakai
+    `email` (bisa mengubah byte biner); file dikembalikan apa adanya.
+    """
+    match = re.search(r'boundary="?([^";]+)"?', content_type or "", re.I)
+    if not match:
+        return None
+    boundary = b"--" + match.group(1).strip().encode("latin-1", "replace")
+    fields, files = {}, []
+    for part in body.split(boundary)[1:]:
+        if part[:2] == b"--":
+            break
+        if part.startswith(b"\r\n"):
+            part = part[2:]
+        elif part.startswith(b"\n"):
+            part = part[1:]
+        head, sep, data = part.partition(b"\r\n\r\n")
+        if not sep:
+            head, sep, data = part.partition(b"\n\n")
+        if not sep:
+            continue
+        if data.endswith(b"\r\n"):
+            data = data[:-2]
+        elif data.endswith(b"\n"):
+            data = data[:-1]
+        headers = {}
+        for line in head.decode("utf-8", "replace").splitlines():
+            if ":" in line:
+                key, value = line.split(":", 1)
+                headers[key.strip().lower()] = value.strip()
+        disposition = headers.get("content-disposition", "")
+        field = re.search(r'name="?([^";]+)"?', disposition)
+        field = field.group(1) if field else ""
+        filename = re.search(r"filename\*=([^;]+)", disposition)
+        if filename:
+            raw = filename.group(1)
+            if raw.lower().startswith("utf-8''"):
+                raw = raw[7:]
+            try:
+                filename = urllib.parse.unquote(raw)
+            except Exception:  # noqa: BLE001
+                filename = raw
+        else:
+            filename = re.search(r'filename="?([^";]+)"?', disposition)
+            filename = filename.group(1) if filename else ""
+        if filename:
+            files.append({"field": field, "filename": filename, "data": data,
+                          "type": headers.get("content-type", "")})
+        elif field:
+            fields[field] = data.decode("utf-8", "replace")
+    return fields, files
 
 
 def _pbkdf2(password: str, salt: bytes, rounds: int) -> bytes:
@@ -1004,38 +1348,10 @@ def _sniff_image(data: bytes) -> tuple[str, str] | None:
     return None
 
 
-def _parse_multipart_file(content_type: str, body: bytes) -> tuple[bytes, str] | None:
-    """Ambil field `file` dari multipart/form-data (tanpa modul cgi — dihapus di 3.13)."""
-    match = re.search(r'boundary=(?:"([^"]+)"|([^\s;]+))', content_type, re.I)
-    if not match:
-        return None
-    boundary = (match.group(1) or match.group(2)).encode("latin-1")
-    delim = b"--" + boundary
-    for part in body.split(delim)[1:]:
-        chunk = part
-        if chunk.startswith(b"--"):
-            break
-        if chunk.startswith(b"\r\n"):
-            chunk = chunk[2:]  # CRLF framing tepat satu, sebelum header part
-        sep = chunk.find(b"\r\n\r\n")
-        if sep < 0:
-            continue
-        headers = chunk[:sep].decode("latin-1", errors="replace")
-        data = chunk[sep + 4:]
-        if data.endswith(b"\r\n"):
-            data = data[:-2]  # CRLF framing tepat satu, sebelum boundary berikut
-        name_m = re.search(r'name="([^"]+)"', headers, re.I)
-        if not name_m or name_m.group(1) != "file":
-            continue
-        fn_m = re.search(r'filename="([^"]*)"', headers, re.I)
-        name = (fn_m.group(1) if fn_m else "").strip() or "gambar"
-        return data, name
-    return None
-
-
 def _image_path_allowed(resolved: Path) -> bool:
-    """Path gambar hanya boleh di bawah cache webchat atau cache Hermes."""
-    for root in (WEBCHAT_IMAGES_ROOT, HERMES_IMAGES_ROOT):
+    """Path gambar hanya boleh di bawah cache webchat, cache Hermes, atau folder
+    uploads/ milik webchat ini (lampiran baru disimpan di sana)."""
+    for root in (WEBCHAT_IMAGES_ROOT, HERMES_IMAGES_ROOT, UPLOAD_DIR):
         try:
             resolved.relative_to(root.resolve())
             return True
@@ -1198,6 +1514,9 @@ class Handler(BaseHTTPRequestHandler):
             if not self._same_origin():
                 return self._fail(403, "cross-origin ditolak")
             return self._serve_cached_image()
+        # Lampiran baru (gambar & dokumen) disajikan lewat id pendek.
+        if path.startswith("/api/uploads/"):
+            return self._serve_upload(path[len("/api/uploads/"):])
         if path in ("/api/agents/boards", "/api/agents/board", "/api/agents/task",
                     "/api/agents/live"):
             if not self._same_origin():
@@ -1232,6 +1551,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/logout":
             return self._do_logout()
         if not self._require_auth():
+            self.close_connection = True
             return
         if not self._same_origin():
             # Body POST belum dibaca → sisa byte akan diurai sebagai request baru
@@ -1270,16 +1590,25 @@ class Handler(BaseHTTPRequestHandler):
         return self.rfile.read(length)
 
     def _do_upload(self) -> None:
+        """Satu jalur unggah untuk gambar DAN dokumen.
+
+        Kontrak respons memuat field lama (`path`, `url`, `name`, `bytes`, `mime`)
+        sekaligus field baru (`id`, `kind`, `text`, `chars`, `truncated`, `note`),
+        jadi transkrip/klien lama tetap jalan.
+        """
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             self.close_connection = True
             return self._fail(400, "bad Content-Length", extra_headers=[("Connection", "close")])
-        if length > _IMAGE_UPLOAD_MAX + _IMAGE_UPLOAD_SLACK:
-            # Tolak TANPA membaca body (bisa 13 MB+) → wajib tutup koneksi supaya
-            # sisa byte tidak diurai sebagai request berikutnya.
+        if length <= 0:
+            return self._fail(400, "body kosong", "Tidak ada isi yang dikirim.")
+        if length > MAX_UPLOAD_BYTES + _IMAGE_UPLOAD_SLACK:
+            # Tolak TANPA membaca body → wajib tutup koneksi supaya sisa byte
+            # tidak diurai sebagai request berikutnya pada keep-alive.
             self.close_connection = True
-            return self._fail(413, "file too large", "Maksimal 12 MB per berkas.",
+            return self._fail(413, "file terlalu besar",
+                              "Maksimal %d MB per berkas." % MAX_UPLOAD_MB,
                               extra_headers=[("Connection", "close")])
         body = self._read_body_exact()
         if body is None:
@@ -1289,51 +1618,145 @@ class Handler(BaseHTTPRequestHandler):
 
         ctype = (self.headers.get("Content-Type") or "").strip()
         ctype_main = ctype.split(";")[0].strip().lower()
-        orig_name = "gambar"
+        file_data = b""
+        orig_name = "file"
+        part_type = ""
         if ctype_main == "multipart/form-data":
-            parsed = _parse_multipart_file(ctype, body)
+            parsed = parse_multipart(body, ctype)
             if parsed is None:
-                return self._fail(400, "field file wajib", "Kirim multipart dengan field `file`.")
-            file_data, orig_name = parsed
+                return self._fail(400, "boundary multipart tidak ditemukan")
+            _fields, files = parsed
+            picked = next((f for f in files if f.get("field") == "file"),
+                          files[0] if files else None)
+            if picked is None:
+                return self._fail(400, "file tidak ditemukan",
+                                  "Sertakan satu file pada field `file`.")
+            file_data = picked.get("data") or b""
+            orig_name = picked.get("filename") or "file"
+            part_type = (picked.get("type") or "").split(";")[0].strip().lower()
+            if not orig_name:
+                orig_name = "file" + (mimetypes.guess_extension(part_type) or "")
         else:
+            # Klien lama boleh mengirim body mentah (mis. image/png langsung).
             file_data = body
+            orig_name = "file" + (mimetypes.guess_extension(ctype_main) or "")
 
-        if len(file_data) > _IMAGE_UPLOAD_MAX:
-            return self._fail(413, "file too large", "Maksimal 12 MB per berkas.")
+        if not file_data:
+            return self._fail(400, "file kosong")
+        if len(file_data) > MAX_UPLOAD_BYTES:
+            return self._fail(413, "file terlalu besar", "Maksimal %d MB per berkas." % MAX_UPLOAD_MB)
 
+        name = safe_filename(orig_name)
+        ext = os.path.splitext(name)[1].lower()
+        if not ext:
+            # Nama tanpa ekstensi (path dibuang) → tebak dari Content-Type part.
+            guess = part_type or (ctype_main if ctype_main not in ("", "multipart/form-data") else "")
+            ext = mimetypes.guess_extension(guess) or ""
+            if ext == ".jpe":
+                ext = ".jpg"
+            name = (name or "file") + ext
+
+        # Gambar: percayai isi berkas, bukan ekstensi (pertahanan dari file
+        # berbahaya yang menyamar). Dokumen tetap divalidasi dari ekstensi.
         sniffed = _sniff_image(file_data)
-        if sniffed is None:
-            return self._fail(415, "format tidak didukung",
-                              "Hanya JPEG, PNG, GIF, dan WebP (dicek dari isi berkas).")
-        mime, ext = sniffed
+        if ext in IMAGE_EXT:
+            if sniffed is None:
+                return self._fail(415, "isi berkas bukan gambar yang didukung",
+                                  "Hanya JPEG, PNG, GIF, dan WebP (dicek dari isi berkas).")
+            ext = "." + sniffed[1]
+            name = os.path.splitext(name)[0] + ext
+        elif sniffed is not None and ext not in ALLOWED_EXT:
+            ext = "." + sniffed[1]
+            name = os.path.splitext(name)[0] + ext
 
-        day = time.strftime("%Y%m%d", time.gmtime())
-        dest_dir = WEBCHAT_IMAGES_ROOT / day
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = dest_dir / ("%s.%s" % (secrets.token_hex(8), ext))
+        if ext not in ALLOWED_EXT:
+            return self._fail(
+                415, "tipe file tidak didukung",
+                "Ekstensi %r tidak didukung. Boleh: %s." % (
+                    ext or "(tanpa ekstensi)",
+                    ", ".join(sorted(e.lstrip(".") for e in ALLOWED_EXT))),
+            )
+
+        day = time.strftime("%Y-%m-%d", time.gmtime())
+        folder = UPLOAD_DIR / day
         try:
-            # O_EXCL + mode 600 sejak create: berkas tidak pernah terlanjur 644.
-            fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            try:
-                os.write(fd, file_data)
-            finally:
-                os.close(fd)
+            folder.mkdir(parents=True, exist_ok=True)
+            os.chmod(UPLOAD_DIR, 0o700)
         except OSError as exc:
-            return self._fail(500, "gagal menyimpan gambar", str(exc))
+            return self._fail(500, "tidak bisa membuat folder unggahan", str(exc))
 
+        for _ in range(5):
+            ident = uuid.uuid4().hex[:8]
+            target = (folder / (ident + "_" + name)).resolve()
+            if UPLOAD_DIR not in target.parents:
+                return self._fail(400, "nama file tidak valid")
+            try:
+                # O_EXCL + mode 600 sejak create: berkas tidak pernah terlanjur 644.
+                fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                try:
+                    os.write(fd, file_data)
+                finally:
+                    os.close(fd)
+                break
+            except FileExistsError:
+                continue
+            except OSError as exc:
+                return self._fail(500, "gagal menyimpan file", str(exc))
+        else:
+            return self._fail(500, "gagal menyimpan file", "nama bentrok berulang")
+
+        record = build_upload_record(ident, name, target, len(file_data))
+        if record["kind"] == "image":
+            try:
+                _prune_old_webchat_images()   # bersihkan cache gambar lama (14 hari)
+            except Exception:  # noqa: BLE001 - pembersihan tidak boleh menggagalkan upload
+                pass
+        record["ok"] = True
+        self._json(200, record)
+
+    def _serve_upload(self, ident: str) -> None:
+        """Sajikan lampiran (dipakai <img> untuk thumbnail setelah reload).
+
+        Hanya id 8 hex, hanya file di dalam UPLOAD_DIR (path kanonik diperiksa),
+        dan hanya ekstensi yang diizinkan — jadi `../` tidak bisa keluar folder.
+        """
+        ident = urllib.parse.unquote(ident or "").strip()
+        if not re.fullmatch(r"[0-9a-f]{8}", ident):
+            return self._fail(400, "id unggahan tidak valid")
+        target = None
         try:
-            _prune_old_webchat_images()
-        except Exception:  # noqa: BLE001 - pembersihan tidak boleh menggagalkan upload
-            pass
-
-        abspath = str(dest.resolve())
-        self._json(200, {
-            "path": abspath,
-            "url": "/api/image?path=" + urllib.parse.quote(abspath, safe=""),
-            "name": orig_name,
-            "bytes": len(file_data),
-            "mime": mime,
-        })
+            days = sorted((p for p in UPLOAD_DIR.iterdir() if p.is_dir()), reverse=True)
+        except OSError:
+            days = []
+        for day in days:
+            for candidate in day.glob(ident + "_*"):
+                if candidate.is_file():
+                    target = candidate.resolve()
+                    break
+            if target:
+                break
+        if target is None:
+            return self._fail(404, "file tidak ditemukan")
+        if UPLOAD_DIR not in target.parents:
+            return self._fail(403, "akses di luar folder unggahan")
+        if target.suffix.lower() not in ALLOWED_EXT:
+            return self._fail(415, "tipe file tidak disajikan")
+        try:
+            data = target.read_bytes()
+        except OSError as exc:
+            return self._fail(500, "gagal membaca file", str(exc))
+        mime = _EXT_MIME.get(target.suffix.lower()) or mimetypes.guess_type(target.name)[0] \
+            or "application/octet-stream"
+        quoted = urllib.parse.quote(target.name.split("_", 1)[-1])
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "private, max-age=600")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "default-src 'none'; sandbox")
+        self.send_header("Content-Disposition", "inline; filename*=UTF-8''" + quoted)
+        self.end_headers()
+        self.wfile.write(data)
 
     def _serve_cached_image(self) -> None:
         query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)

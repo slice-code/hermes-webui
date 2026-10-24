@@ -7,115 +7,201 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f1115'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%237aa2f7'/%3E%3C/svg%3E">
 <style>
   :root{
-    --bg:#0f1115; --bg2:#161a21; --bg3:#1d222b; --line:#262c37;
-    --fg:#e6e9ef; --dim:#8b93a1; --acc:#7aa2f7; --acc2:#bb9af7;
-    --ok:#9ece6a; --warn:#e0af68; --err:#f7768e; --radius:12px;
+    --bg:#191a1c; --side:#131416; --side2:#1b1d21; --bg2:#202226; --bg3:#2a2d33;
+    --line:#2e3238; --line2:#3a3f47;
+    --fg:#eceef2; --dim:#9aa1ad; --faint:#6d7480;
+    --acc:#7aa2f7; --acc-soft:#23324a; --acc2:#bb9af7;
+    --ok:#9ece6a; --warn:#e0af68; --err:#f7768e;
+    --radius:14px; --thread:790px;
   }
-  *{box-sizing:border-box; scrollbar-width:thin; scrollbar-color:#333d52 transparent}
+  *{box-sizing:border-box; scrollbar-width:thin; scrollbar-color:#3a4048 transparent}
   *::-webkit-scrollbar{width:10px;height:10px}
-  *::-webkit-scrollbar-thumb{background:#2c3549;border-radius:9px;border:2px solid transparent;background-clip:padding-box}
-  *::-webkit-scrollbar-thumb:hover{background:#3b4761;border:2px solid transparent;background-clip:padding-box}
+  *::-webkit-scrollbar-thumb{background:#383e47;border-radius:9px;border:2px solid transparent;background-clip:padding-box}
+  *::-webkit-scrollbar-thumb:hover{background:#4a515c;border:2px solid transparent;background-clip:padding-box}
   *::-webkit-scrollbar-corner{background:transparent}
-  :focus-visible{outline:2px solid var(--acc); outline-offset:1px}
+  :focus-visible{outline:2px solid var(--acc); outline-offset:2px}
   ::selection{background:#33517f; color:#fff}
   html,body{height:100%}
   body{
     margin:0; background:var(--bg); color:var(--fg);
-    font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
-    display:flex; flex-direction:column; overflow-x:clip;
+    font:15px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    display:flex; overflow:hidden; height:100dvh;
   }
-  header{
-    display:flex; align-items:center; gap:9px; row-gap:7px; flex-wrap:wrap; padding:9px 14px;
-    background:var(--bg2); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5;
-  }
-  header h1{font-size:14px; margin:0; letter-spacing:.02em; font-weight:600; white-space:nowrap}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none;transition:background .2s}
-  .dot.on{background:var(--ok)} .dot.off{background:var(--err)}
-  .spacer{flex:1}
   button{
     font:inherit; font-size:13px; color:var(--fg); background:var(--bg3);
-    border:1px solid var(--line); border-radius:8px; padding:6px 11px; cursor:pointer;
+    border:1px solid var(--line); border-radius:9px; padding:6px 11px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:6px;
   }
   button:hover{border-color:var(--acc); color:#fff}
   button:disabled{opacity:.45; cursor:default}
+  /* tombol dengan atribut hidden() harus benar-benar hilang: aturan button{display:inline-flex}
+     di atas mengalahkan display:none bawaan UA. */
+  [hidden]{display:none!important}
   button.primary{background:var(--acc); border-color:var(--acc); color:#0b1020; font-weight:600}
   button.danger{background:transparent;border-color:var(--err);color:var(--err)}
+  .iconbtn{padding:7px; width:34px; height:34px; justify-content:center}
+  .iconbtn svg{width:18px;height:18px;display:block}
+  .spacer{flex:1}
+
+  /* ---------------- sidebar ---------------- */
+  .side{
+    width:270px; flex:none; background:var(--side); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; min-height:0;
+    transition:width .18s ease;
+  }
+  body.side-collapsed .side{width:0; border-right:none; overflow:hidden}
+  .side-top{padding:10px 10px 6px; display:flex; flex-direction:column; gap:8px}
+  .newchat{
+    width:100%; justify-content:flex-start; gap:9px; padding:9px 11px; font-size:13.5px;
+    background:transparent; border-color:var(--line2); border-radius:10px;
+  }
+  .newchat svg{width:16px;height:16px}
+  .side-search input{
+    width:100%; padding:8px 11px; background:var(--side2); color:var(--fg);
+    border:1px solid var(--line); border-radius:9px; font:12.5px/1.4 inherit; outline:none;
+  }
+  .side-search input:focus{border-color:var(--acc)}
+  .side-label{padding:10px 14px 4px; font:11px/1 ui-monospace,monospace; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--faint)}
+  .side-list{flex:1; overflow-y:auto; padding:0 8px 10px; min-height:0}
+  .conv{
+    display:flex; align-items:center; gap:8px; padding:8px 9px; border-radius:9px;
+    cursor:pointer; color:var(--fg); border:1px solid transparent; margin-bottom:1px;
+  }
+  .conv:hover{background:var(--side2)}
+  .conv.active{background:var(--bg3); border-color:var(--line2)}
+  .conv .ct{flex:1; min-width:0; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .conv .cx{
+    flex:none; opacity:0; border:none; background:transparent; padding:2px 5px; color:var(--faint);
+    font-size:14px; line-height:1; border-radius:6px;
+  }
+  .conv:hover .cx, .conv.active .cx{opacity:1}
+  .conv .cx:hover{color:var(--err); background:#2a1c21}
+  .side-foot{border-top:1px solid var(--line); padding:8px 10px; display:flex; align-items:center; gap:8px}
+  .side-foot .who{font-size:12.5px; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .side-foot button{font-size:12px; padding:5px 9px; background:transparent}
+  .side-overlay{display:none}
+
+  /* ---------------- chat column ---------------- */
+  .chat{flex:1; min-width:0; display:flex; flex-direction:column; min-height:0}
+  .topbar{
+    display:flex; align-items:center; gap:8px; padding:9px 13px; flex:none;
+    background:var(--bg); border-bottom:1px solid var(--line);
+  }
+  .topbar h1{font-size:14px; margin:0; letter-spacing:.02em; font-weight:600; white-space:nowrap}
+  .topTitle{
+    font-size:12.5px; color:var(--dim); max-width:min(38vw,420px); overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; padding-left:2px;
+  }
+  .topTitle::before{content:"·"; color:var(--faint); margin-right:8px}
+  /* navigasi halaman: Chat · Papan · Workspace (dipakai di semua halaman) */
+  nav.pages{
+    display:flex; align-items:stretch; border:1px solid var(--line); border-radius:9px;
+    overflow:hidden; background:var(--bg2); flex:none;
+  }
+  nav.pages a{
+    font-size:12.5px; color:var(--dim); text-decoration:none; padding:0 10px;
+    min-height:32px; display:inline-flex; align-items:center; white-space:nowrap;
+  }
+  nav.pages a + a{border-left:1px solid var(--line)}
+  nav.pages a:hover{color:#fff; background:var(--bg3)}
+  nav.pages a[aria-current="page"]{color:#fff; background:var(--acc-soft)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none;transition:background .2s}
+  .dot.on{background:var(--ok)} .dot.off{background:var(--err)}
   button.model{
-    display:flex; align-items:center; gap:7px; max-width:46vw;
+    display:flex; align-items:center; gap:7px; max-width:44vw; padding:5px 10px;
     font:12px/1 ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--dim);
+    background:transparent; border-color:var(--line);
   }
   button.model span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   button.model b{color:var(--acc); font-weight:600}
-  /* tautan ke halaman Pemantau Agent — gaya sama dengan tombol header lain */
-  a.btn{
-    font:inherit; font-size:13px; color:var(--fg); background:var(--bg3);
-    border:1px solid var(--line); border-radius:8px; padding:6px 11px; cursor:pointer;
-    text-decoration:none; white-space:nowrap; display:inline-flex; align-items:center; gap:6px;
-  }
-  a.btn:hover{border-color:var(--acc); color:#fff}
-  a.btn .ico{font-size:14px; line-height:1}
+  .topbar button#auto{font-size:12px; padding:6px 9px}
+  .topbar button#auto.on{background:var(--acc-soft); border-color:#39527a; color:#cfe0ff}
 
-  /* navigasi halaman: Chat · Papan · Workspace (dipakai di ketiga halaman) */
-  nav.pages{
-    display:flex; align-items:stretch; border:1px solid var(--line); border-radius:8px;
-    overflow:hidden; background:var(--bg3);
+  .banner{
+    margin:12px auto 0; padding:9px 13px; border-radius:10px; font-size:13px;
+    background:#1a2233; border:1px solid #2c3a55; color:#c8d3e6; display:flex; gap:10px;
+    align-items:center; flex-wrap:wrap; width:calc(100% - 32px); max-width:var(--thread);
   }
-  nav.pages a{
-    font-size:12.5px; color:var(--dim); text-decoration:none; padding:7px 10px;
-    min-height:34px; display:inline-flex; align-items:center; white-space:nowrap;
-  }
-  nav.pages a + a{border-left:1px solid var(--line)}
-  nav.pages a:hover{color:#fff; background:#202839}
-  nav.pages a[aria-current="page"]{color:#fff; background:#1b2740}
+  .banner #bannerText{min-width:0; overflow-wrap:anywhere}
+  .banner button{flex:none}
 
-  main{flex:1; overflow-y:auto; overflow-x:hidden}
-  .wrap{max-width:900px; margin:0 auto; padding:20px 16px 8px; display:flex; flex-direction:column; gap:16px}
+  .thread{flex:1; overflow-y:auto; overflow-x:hidden; min-height:0; position:relative}
+  .wrap{max-width:var(--thread); margin:0 auto; padding:22px 18px 10px; display:flex;
+    flex-direction:column; gap:6px}
 
-  .msg{display:flex; gap:11px; align-items:flex-start}
+  .empty{color:var(--dim); text-align:center; padding:14vh 0 0; font-size:14.5px; line-height:1.8}
+  .empty h2{font-size:22px; color:var(--fg); margin:0 0 8px; font-weight:600; letter-spacing:-.01em}
+  .empty code{font:12.5px ui-monospace,monospace; background:var(--bg3); padding:2px 6px; border-radius:5px}
+  .empty .tips{font-size:12.5px; color:var(--faint); margin-top:14px}
+
+  .daysep{display:flex; align-items:center; gap:10px; margin:16px 0 10px; color:var(--faint); font-size:11.5px}
+  .daysep::before,.daysep::after{content:""; flex:1; height:1px; background:var(--line)}
+
+  .msg{display:flex; gap:11px; align-items:flex-start; padding:5px 0}
   .msg .who{
-    flex:none; width:26px; height:26px; border-radius:7px; display:grid; place-items:center;
-    font-size:12px; font-weight:700; background:var(--bg3); border:1px solid var(--line); color:var(--dim);
+    flex:none; width:28px; height:28px; border-radius:50%; display:grid; place-items:center;
+    font-size:11.5px; font-weight:700; background:var(--bg3); border:1px solid var(--line);
+    color:var(--dim); margin-top:2px;
   }
-  .msg.user .who{background:#243044; color:var(--acc); border-color:#2f3f5c}
-  .msg.agent .who{background:#2b2440; color:var(--acc2); border-color:#3d3462}
-  .msg.tool .who{background:#2a2418; color:var(--warn); border-color:#463c22}
-  .bubble{flex:1; min-width:0}
-  .msg.user .bubble .text{background:var(--bg2); border:1px solid var(--line); border-radius:var(--radius); padding:10px 13px}
+  .msg.user{flex-direction:row-reverse}
+  .msg.user .who{background:#2b3d5b; color:#cfe0ff; border-color:#3a557f}
+  .msg.agent .who{background:#342a4d; color:#d6c6ff; border-color:#4a3d6e}
+  .msg.tool .who{background:#2e2a1c; color:var(--warn); border-color:#4a4227}
+  .bubble{min-width:0; flex:1}
+  .msg.user .bubble{flex:0 1 auto; max-width:82%; display:flex; flex-direction:column; align-items:flex-end}
+  .msg.user .bubble .text{
+    background:var(--acc-soft); border:1px solid #33445f; border-radius:16px 16px 5px 16px;
+    padding:10px 14px;
+  }
+  .msg.agent .bubble{padding-top:3px}
+  .acts{display:flex; gap:4px; margin-top:4px; opacity:0; transition:opacity .12s}
+  .msg:hover .acts, .acts.show{opacity:1}
+  .acts button{
+    font-size:11.5px; padding:2px 7px; background:transparent; border-color:transparent;
+    color:var(--faint);
+  }
+  .acts button:hover{color:var(--fg); border-color:var(--line2); background:var(--bg2)}
 
-  .text p{margin:.5em 0} .text p:first-child{margin-top:0} .text p:last-child{margin-bottom:0}
-  .text h1,.text h2,.text h3{margin:.8em 0 .35em; line-height:1.25}
-  .text h1{font-size:1.3em} .text h2{font-size:1.15em} .text h3{font-size:1.03em}
-  .text ul,.text ol{margin:.45em 0; padding-left:1.4em}
-  .text li{margin:.18em 0}
+  .text{min-width:0; overflow-wrap:anywhere}
+  .text p{margin:.55em 0} .text p:first-child{margin-top:0} .text p:last-child{margin-bottom:0}
+  .text h1,.text h2,.text h3,.text h4{margin:.9em 0 .4em; line-height:1.28; letter-spacing:-.01em}
+  .text h1{font-size:1.45em} .text h2{font-size:1.24em} .text h3{font-size:1.08em} .text h4{font-size:1em}
+  .text ul,.text ol{margin:.5em 0; padding-left:1.45em}
+  .text li{margin:.25em 0}
   .text li > ul,.text li > ol,.text ul ul,.text ol ol,.text ul ol,.text ol ul{margin:.2em 0}
-  .text{overflow-wrap:anywhere}
-  .text a{color:var(--acc)}
+  .text a{color:var(--acc); text-decoration:none; border-bottom:1px solid #3a5680}
+  .text a:hover{border-bottom-color:var(--acc)}
   .text code{
     font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
-    background:#11151c; border:1px solid var(--line); border-radius:5px; padding:.1em .38em;
+    background:#14161a; border:1px solid var(--line); border-radius:5px; padding:.1em .38em;
   }
-  .text pre{margin:.6em 0; background:#0c0f14; border:1px solid var(--line); border-radius:9px; padding:11px 13px; overflow-x:auto}
-  .text pre code{background:none; border:none; padding:0; font-size:12.5px}
-  .text hr{border:none;border-top:1px solid var(--line);margin:1em 0}
-  .text blockquote{margin:.6em 0;padding:.1em .9em;border-left:3px solid var(--line);color:var(--dim)}
+  .text pre{margin:.6em 0; background:#111317; border:1px solid var(--line); border-radius:10px;
+    padding:12px 14px; overflow-x:auto}
+  .text pre code{background:none; border:none; padding:0; font-size:12.7px}
+  .text hr{border:none;border-top:1px solid var(--line);margin:1.1em 0}
+  .text blockquote{margin:.7em 0;padding:.15em .95em;border-left:3px solid var(--line2);color:var(--dim)}
+  .text img.mimg{max-width:min(100%,420px); border-radius:10px; border:1px solid var(--line);
+    cursor:zoom-in; display:block; margin:.5em 0}
 
   /* tabel laporan */
-  .text .tblwrap{margin:.7em 0; border:1px solid var(--line); border-radius:9px; overflow-x:auto; background:#0d1117}
+  .text .tblwrap{margin:.7em 0; border:1px solid var(--line); border-radius:10px; overflow-x:auto; background:#14171b}
   .text table{border-collapse:collapse; width:100%; font-size:13px}
   .text th,.text td{padding:7px 11px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; overflow-wrap:anywhere}
-  .text th{background:#161c26; color:#cfd6e4; font-weight:600; white-space:nowrap}
+  .text th{background:#1b1f25; color:#d3d9e4; font-weight:600; white-space:nowrap}
   .text tr:last-child td{border-bottom:none}
-  .text tr:nth-child(even) td{background:#11161e}
+  .text tr:nth-child(even) td{background:#171a1f}
   .text .al-right{text-align:right} .text .al-center{text-align:center} .text .al-left{text-align:left}
   .text th.num,.text td.num{
     text-align:right; font-variant-numeric:tabular-nums;
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px;
+    width:1%; white-space:nowrap;
   }
 
   /* blok kode */
-  .text .cbox{margin:.7em 0; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:#0c0f14}
+  .text .cbox{margin:.7em 0; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#111317}
   .text .chead{
-    display:flex; align-items:center; gap:8px; padding:5px 10px; background:#131922;
+    display:flex; align-items:center; gap:8px; padding:5px 10px; background:#181c22;
     border-bottom:1px solid var(--line); font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--dim);
   }
   .text .chead .lang{color:var(--acc2); letter-spacing:.04em}
@@ -124,14 +210,14 @@
     border:1px solid var(--line); border-radius:6px; color:var(--fg); cursor:pointer;
   }
   .text .chead button.copy:hover{border-color:var(--acc); color:#fff}
-  .text .cbox pre{margin:0; border:none; border-radius:0; background:none; padding:11px 13px}
+  .text .cbox pre{margin:0; border:none; border-radius:0; background:none; padding:12px 14px}
   .c-cmt{color:#6b7684; font-style:italic}
   .c-str{color:#9ece6a} .c-num{color:#e0af68} .c-kw{color:#7aa2f7}
 
   /* pohon folder/menu */
   .text .tree{
-    margin:.7em 0; padding:10px 12px; background:#0c0f14; border:1px solid var(--line);
-    border-radius:9px; overflow-x:auto;
+    margin:.7em 0; padding:10px 12px; background:#111317; border:1px solid var(--line);
+    border-radius:10px; overflow-x:auto;
     font:12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;
   }
   .text .cbox .tree{margin:0; border:none; border-radius:0; background:none}
@@ -140,7 +226,7 @@
   .text .tree li{position:relative}
   .text .tree .row{display:flex; align-items:baseline; gap:6px; border-radius:5px; padding:1px 3px}
   .text .tree li.dir > .row{cursor:pointer}
-  .text .tree li.dir > .row:hover{background:#151c27}
+  .text .tree li.dir > .row:hover{background:#171c24}
   .text .tree .tw{flex:none; width:11px; color:var(--dim); font-size:10px; text-align:center}
   .text .tree li.dir > .row .tw::before{content:"▾"}
   .text .tree li.closed > .row .tw::before{content:"▸"}
@@ -152,27 +238,30 @@
   .tools{display:flex; flex-wrap:wrap; gap:6px; margin:0 0 9px}
   .tool{
     font:12px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--dim);
-    background:#12161d; border:1px solid var(--line); border-radius:7px; padding:5px 8px;
+    background:#181b20; border:1px solid var(--line); border-radius:8px; padding:5px 9px;
     max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
   .tool b{color:var(--warn); font-weight:600}
   .tool.done{opacity:.62}
-  details.think{margin:0 0 9px; border:1px solid var(--line); border-radius:9px; background:#12161d}
+  details.think{margin:0 0 9px; border:1px solid var(--line); border-radius:10px; background:#181b20}
   details.think summary{cursor:pointer; padding:7px 11px; font-size:12px; color:var(--dim); user-select:none}
-  details.think pre{margin:0; padding:0 13px 11px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:12.5px; color:#a9b1c1}
+  details.think pre{margin:0; padding:0 13px 11px; white-space:pre-wrap; overflow-wrap:anywhere;
+    font-size:12.5px; color:#a9b1c1}
 
   .cursor::after{content:"▍"; color:var(--acc); animation:blink 1s steps(2) infinite}
   @keyframes blink{50%{opacity:0}}
+  .dots{display:inline-flex; gap:4px; padding:4px 0}
+  .dots i{width:6px;height:6px;border-radius:50%;background:var(--acc);animation:pulse 1.1s infinite}
+  .dots i:nth-child(2){animation-delay:.15s} .dots i:nth-child(3){animation-delay:.3s}
+  @keyframes pulse{0%,80%,100%{opacity:.25; transform:scale(.85)} 40%{opacity:1; transform:scale(1)}}
 
   /* kartu konfirmasi (approval) */
-  .approval{
-    margin:0 0 10px; border:1px solid #6b5320; background:#241f12; border-radius:10px; padding:11px 13px;
-  }
-  .approval.answered{border-color:var(--line); background:#141821; opacity:.85}
+  .approval{margin:0 0 10px; border:1px solid #6b5320; background:#241f12; border-radius:11px; padding:11px 13px}
+  .approval.answered{border-color:var(--line); background:#171a1f; opacity:.85}
   .approval .aphead{font-size:12px; font-weight:700; letter-spacing:.03em; color:var(--warn); text-transform:uppercase}
   .approval.answered .aphead{color:var(--dim)}
   .approval .apcmd{
-    margin:8px 0 6px; padding:8px 10px; background:#0c0f14; border:1px solid var(--line); border-radius:7px;
+    margin:8px 0 6px; padding:8px 10px; background:#111317; border:1px solid var(--line); border-radius:8px;
     font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre-wrap; overflow-wrap:anywhere;
   }
   .approval .apdesc{font-size:12.5px; color:var(--dim); margin-bottom:9px}
@@ -180,33 +269,101 @@
   .approval .apbtns button{font-size:12.5px; padding:6px 11px}
   .approval .apstate{margin-top:9px; font-size:12px; color:var(--dim); font:12px ui-monospace,monospace}
   .approval .apstate.ok{color:var(--ok)} .approval .apstate.bad{color:var(--err)}
-  .err{border:1px solid var(--err); background:#241419; color:#ffc9d2; border-radius:9px; padding:11px 13px; font-size:13.5px; white-space:pre-wrap; overflow-wrap:anywhere}
+
+  .err{border:1px solid var(--err); background:#241419; color:#ffc9d2; border-radius:10px;
+    padding:11px 13px; font-size:13.5px; white-space:pre-wrap; overflow-wrap:anywhere}
   .err b{color:#fff}
-  .empty{color:var(--dim); text-align:center; padding:13vh 0 0; font-size:14px}
-  .empty code{font:12.5px ui-monospace,monospace; background:var(--bg3); padding:2px 6px; border-radius:5px}
 
-  footer{border-top:1px solid var(--line); background:var(--bg2); padding:11px 16px 13px}
-  .composer{max-width:900px; margin:0 auto; display:flex; gap:9px; align-items:flex-end}
-  textarea{
-    flex:1; min-width:0; resize:none; min-height:46px; max-height:210px; padding:12px 13px;
-    background:var(--bg3); color:var(--fg); border:1px solid var(--line); border-radius:var(--radius);
-    font:inherit; line-height:1.45; outline:none;
+  /* lampiran di transkrip */
+  .atts{display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 0; justify-content:flex-end}
+  .msg.agent .atts{justify-content:flex-start}
+  .att{
+    display:flex; align-items:center; gap:9px; padding:7px 9px; max-width:260px;
+    background:var(--bg2); border:1px solid var(--line); border-radius:10px; min-width:0;
   }
-  textarea:focus{border-color:var(--acc)}
-  textarea:disabled{opacity:.5}
-  .hint{max-width:900px;margin:7px auto 0;color:var(--dim);font-size:11.5px;display:flex;gap:12px;flex-wrap:wrap}
-  .hint .mono{font:11px ui-monospace,monospace; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .att.img{padding:0; overflow:hidden; border-radius:10px; background:#111317}
+  .att.img img{display:block; max-width:220px; max-height:150px; object-fit:cover; cursor:zoom-in}
+  .att .aico{
+    flex:none; width:34px; height:34px; border-radius:8px; display:grid; place-items:center;
+    font:9.5px/1 ui-monospace,monospace; font-weight:700; letter-spacing:.02em;
+    background:#26313f; color:#b9d1ff; border:1px solid #354659;
+  }
+  .att .ameta{min-width:0}
+  .att .aname{font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .att .asub{font-size:11px; color:var(--faint); margin-top:1px; white-space:nowrap}
 
-  /* ---- panel samping ---- */
+  /* ---------------- composer ---------------- */
+  .composer-wrap{flex:none; padding:8px 18px 16px; background:linear-gradient(180deg,transparent,var(--bg) 26%)}
+  .composer{max-width:var(--thread); margin:0 auto; background:var(--bg2); border:1px solid var(--line2);
+    border-radius:18px; padding:8px 8px 6px; box-shadow:0 10px 30px -18px #000}
+  .composer:focus-within{border-color:#3f5480}
+  .composer.drag{border-color:var(--acc); background:#1e2735}
+  .chips{display:flex; flex-wrap:wrap; gap:7px; padding:2px 4px 7px}
+  .chips:empty{display:none}
+  .chip{
+    display:flex; align-items:center; gap:8px; padding:5px 7px; border-radius:10px;
+    background:var(--bg3); border:1px solid var(--line2); max-width:250px; position:relative; overflow:hidden;
+  }
+  .chip .cthumb{width:30px;height:30px;border-radius:6px;object-fit:cover;flex:none;background:#111}
+  .chip .cico{width:30px;height:30px;border-radius:6px;display:grid;place-items:center;flex:none;
+    font:9px/1 ui-monospace,monospace; font-weight:700; background:#26313f; color:#b9d1ff; border:1px solid #354659}
+  .chip .cmeta{min-width:0}
+  .chip .cname{font-size:12px; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .chip .csub{font-size:10.5px; color:var(--faint); margin-top:1px; white-space:nowrap}
+  .chip .cx{border:none;background:transparent;padding:1px 3px;color:var(--faint);font-size:13px;line-height:1;border-radius:5px}
+  .chip .cx:hover{color:var(--err); background:#2a1c21}
+  .chip .bar{position:absolute; left:0; bottom:0; height:2px; background:var(--acc); transition:width .15s}
+  .chip.err{border-color:#6b2f3a; background:#241419}
+  .chip.err .csub{color:#ffb3c1}
+  .crow{display:flex; align-items:flex-end; gap:6px; padding:0 2px 2px}
+  .crow .clip{color:var(--dim); background:transparent; border-color:transparent}
+  .crow .clip:hover{color:var(--fg); background:var(--bg3); border-color:var(--line)}
+  textarea{
+    flex:1; min-width:0; resize:none; min-height:38px; max-height:220px; padding:8px 4px;
+    background:transparent; color:var(--fg); border:none; border-radius:10px;
+    font:inherit; line-height:1.5; outline:none;
+  }
+  textarea:focus,textarea:focus-visible{outline:none}
+  textarea:disabled{opacity:.5}
+  .sendbtn{
+    flex:none; width:34px; height:34px; padding:0; border-radius:50%; justify-content:center;
+    background:var(--acc); border-color:var(--acc); color:#0b1020;
+  }
+  .sendbtn:hover{background:#8db1fa; border-color:#8db1fa}
+  .sendbtn:disabled{background:var(--bg3); border-color:var(--line); color:var(--faint)}
+  .sendbtn svg{width:17px;height:17px}
+  .stopbtn{
+    flex:none; width:34px; height:34px; padding:0; border-radius:50%; justify-content:center;
+    background:#3a2630; border-color:#6b3a48; color:#ffb3c1;
+  }
+  .stopbtn svg{width:13px;height:13px}
+  .hint{max-width:var(--thread); margin:6px auto 0; color:var(--faint); font-size:11px;
+    display:flex; gap:12px; flex-wrap:wrap; padding:0 4px}
+  .hint .mono{font:11px ui-monospace,monospace; min-width:0; max-width:100%;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; opacity:.8}
+
+  .to-bottom{
+    position:absolute; left:50%; transform:translateX(-50%); bottom:14px; z-index:4;
+    width:34px; height:34px; border-radius:50%; padding:0; justify-content:center;
+    background:var(--bg3); border-color:var(--line2); box-shadow:0 6px 18px -8px #000;
+    display:none;
+  }
+  .to-bottom.show{display:inline-flex}
+  .to-bottom svg{width:16px;height:16px}
+
+  /* ---------------- panel / modal ---------------- */
   .scrim{position:fixed; inset:0; background:#000a; z-index:20; display:none}
   .scrim.open{display:block}
   .panel{
-    position:fixed; top:0; bottom:0; left:0; width:min(440px,90vw); z-index:21;
-    background:var(--bg2); border-right:1px solid var(--line);
-    display:flex; flex-direction:column; transform:translateX(-102%); transition:transform .18s ease;
+    position:fixed; top:0; bottom:0; right:0; width:min(440px,92vw); z-index:21;
+    background:var(--bg2); border-left:1px solid var(--line);
+    display:flex; flex-direction:column; transform:translateX(102%); transition:transform .18s ease;
   }
+  .panel.left{left:0; right:auto; border-left:none; border-right:1px solid var(--line);
+    transform:translateX(-102%)}
   .panel.open{transform:none}
-  .panel > header{position:static; border-bottom:1px solid var(--line)}
+  .panel > header{display:flex; align-items:center; gap:8px; padding:11px 12px; border-bottom:1px solid var(--line)}
+  .panel > header h1{font-size:13px; margin:0; font-weight:600; letter-spacing:.02em}
   .panel .body{flex:1; overflow-y:auto; padding:8px}
   .panel input[type=search]{
     width:100%; padding:10px 12px; background:var(--bg3); color:var(--fg);
@@ -214,150 +371,201 @@
   }
   .panel input[type=search]:focus{border-color:var(--acc)}
 
-  .sess{padding:9px 11px; border:1px solid transparent; border-radius:9px; cursor:pointer; margin-bottom:2px}
+  .sess{padding:9px 11px; border:1px solid transparent; border-radius:10px; cursor:pointer; margin-bottom:2px}
   .sess:hover{background:var(--bg3); border-color:var(--line)}
   .sess .t{font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .sess .m{font-size:11.5px; color:var(--dim); margin-top:3px; display:flex; gap:9px; flex-wrap:wrap}
   .sess .m .src{color:var(--acc)}
 
-  .mrow{padding:7px 11px; border-radius:8px; cursor:pointer; display:flex; gap:8px; align-items:baseline}
+  .mrow{padding:7px 11px; border-radius:9px; cursor:pointer; display:flex; gap:8px; align-items:baseline}
   .mrow:hover{background:var(--bg3)}
-  .mrow .prov{font:11.5px ui-monospace,monospace; color:var(--acc2); flex:none; width:104px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .mrow .prov{font:11.5px ui-monospace,monospace; color:var(--acc2); flex:none; width:104px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .mrow .id{font:12.5px ui-monospace,monospace; color:var(--fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .mrow.sel{background:#1b2740}
   .mrow.na .id{color:var(--dim)}
-  .phead{font:11.5px ui-monospace,monospace; color:var(--dim); padding:10px 11px 4px; text-transform:uppercase; letter-spacing:.06em}
+  .phead{font:11.5px ui-monospace,monospace; color:var(--faint); padding:10px 11px 4px;
+    text-transform:uppercase; letter-spacing:.06em}
 
-  /* setelan */
   .setrow{
     display:flex; gap:10px; align-items:flex-start; padding:10px 11px; margin:6px 0;
-    border:1px solid var(--line); border-radius:9px; background:var(--bg2); cursor:pointer;
+    border:1px solid var(--line); border-radius:10px; background:var(--bg3); cursor:pointer;
   }
   .setrow:hover{border-color:var(--acc)}
-  .setrow.on{border-color:var(--acc); background:#16203a}
-  .setrow .mark{
-    flex:none; width:15px; height:15px; border-radius:50%; border:1.5px solid var(--dim); margin-top:2px;
-  }
-  .setrow.on .mark{border-color:var(--acc); background:var(--acc); box-shadow:inset 0 0 0 3px var(--bg2)}
+  .setrow.on{border-color:var(--acc); background:#1b2740}
+  .setrow .mark{flex:none; width:15px; height:15px; border-radius:50%; border:1.5px solid var(--dim); margin-top:2px}
+  .setrow.on .mark{border-color:var(--acc); background:var(--acc); box-shadow:inset 0 0 0 3px var(--bg3)}
   .setrow .lbl{font-size:13.5px}
   .setrow .hint2{font-size:11.5px; color:var(--dim); margin-top:3px; line-height:1.45}
   .setnote{font-size:11.5px; color:var(--dim); padding:10px 11px 16px; line-height:1.55}
   .setnote code{font:11px ui-monospace,monospace; color:var(--acc2)}
 
-  .banner{
-    max-width:900px; margin:14px auto 0; padding:9px 13px; border-radius:9px; font-size:13px;
-    background:#1a2233; border:1px solid #2c3a55; color:#c8d3e6; display:flex; gap:10px; align-items:center;
-    flex-wrap:wrap;
+  .modal{position:fixed; inset:0; background:#000b; z-index:40; display:none; place-items:center; padding:20px}
+  .modal.open{display:grid}
+  .modal-card{
+    width:min(430px,94vw); background:var(--bg2); border:1px solid var(--line2);
+    border-radius:14px; padding:18px; box-shadow:0 24px 60px -20px #000;
   }
-  .banner #bannerText{min-width:0; overflow-wrap:anywhere}
-  .banner button{flex:none}
+  .modal-card h3{margin:0 0 8px; font-size:15px}
+  .modal-card p{margin:0 0 16px; font-size:13.5px; color:var(--dim); line-height:1.55}
+  .modal-btns{display:flex; gap:8px; justify-content:flex-end}
+  .modal-btns button{padding:7px 14px}
 
-  /* lampiran gambar */
-  .chips{
-    max-width:900px; margin:0 auto 8px; display:flex; flex-wrap:wrap; gap:8px;
-    max-width:min(900px,100%);
+  .lightbox{position:fixed; inset:0; z-index:50; background:#000e; display:none;
+    place-items:center; padding:26px; cursor:zoom-out}
+  .lightbox.open{display:grid}
+  .lightbox img{max-width:94vw; max-height:90vh; border-radius:10px; box-shadow:0 30px 80px -20px #000}
+  .lightbox .lbclose{position:absolute; top:14px; right:16px; font-size:22px; line-height:1;
+    background:transparent; border:none; color:#fff; cursor:pointer}
+
+  @media(max-width:860px){
+    .side{
+      position:fixed; left:0; top:0; bottom:0; z-index:30; width:min(300px,86vw);
+      transform:translateX(-100%); transition:transform .2s ease; border-right:1px solid var(--line);
+    }
+    body.side-collapsed .side{width:min(300px,86vw)}
+    body.side-open .side{transform:none}
+    body.side-open .side-overlay{display:block; position:fixed; inset:0; background:#000a; z-index:29}
+    .wrap{padding:16px 13px 8px}
+    .composer-wrap{padding:6px 10px 10px}
+    .msg.user .bubble{max-width:88%}
+    button.model{max-width:52vw}
+    .topTitle{display:none}
+    nav.pages a{padding:0 8px; font-size:11.5px; min-height:30px}
+    .topbar{padding:8px 9px; gap:6px}
+    .topbar h1{display:none}
+    .topbar #history span.lbl{display:none}
   }
-  .chip{
-    display:flex; align-items:center; gap:8px; max-width:100%; min-width:0;
-    padding:5px 8px 5px 5px; background:var(--bg3); border:1px solid var(--line);
-    border-radius:var(--radius); font-size:12px;
-  }
-  .chip img{
-    width:44px; height:44px; object-fit:cover; border-radius:6px; flex:none;
-    background:#0c0f14;
-  }
-  .chip .nm{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:12rem}
-  .chip .sz{color:var(--dim); flex:none; font:11px ui-monospace,monospace}
-  .chip button.rm{
-    flex:none; padding:2px 7px; font-size:14px; line-height:1; background:transparent;
-    border:1px solid var(--line); border-radius:6px; color:var(--dim);
-  }
-  .chip button.rm:hover{border-color:var(--err); color:var(--err)}
-  .chatimg{
-    max-width:min(320px,100%); border-radius:9px; border:1px solid var(--line);
-    display:block; margin:0;
-  }
-  .msgimgs{display:flex; flex-wrap:wrap; gap:8px; margin:.45em 0 0; min-width:0; max-width:100%}
-  .imgchip{
-    display:inline-block; font-size:12px; color:var(--dim); background:var(--bg3);
-    border:1px solid var(--line); border-radius:7px; padding:4px 8px; margin:.35em .35em 0 0;
-    max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  }
-  main.dragover{outline:2px dashed var(--acc); outline-offset:-4px}
-  button.attach{font-size:16px; padding:8px 11px; flex:none; line-height:1}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
 </style>
 </head>
 <body>
-<header>
-  <span class="dot" id="dot"></span>
-  <h1>Hermes</h1>
-  <button class="model" id="modelBtn" title="Pilih provider &amp; model">
-    <b id="modelProv">default</b><span id="modelName">memuat…</span>
-  </button>
-  <span class="spacer"></span>
-  <nav class="pages" aria-label="Navigasi halaman">
-    <a href="/" aria-current="page">Chat</a>
-    <a href="/agents" title="Papan kanban Hermes — status task per agent">Papan</a>
-    <a href="/workspace" title="Kantor virtual — siapa yang sedang bekerja">Workspace</a>
-  </nav>
-  <button id="auto" title="Jawab permintaan konfirmasi otomatis">⚡ Auto</button>
-  <button id="settings" title="Setelan: konfirmasi perintah">⚙</button>
-  <button id="history">Riwayat</button>
-  <button id="clear">Chat baru</button>
-  <button id="who" title="Sesi login aktif">…</button>
-  <button id="logout">Keluar</button>
-</header>
 
-<div class="banner" id="banner" style="display:none">
-  <span id="bannerText"></span><span class="spacer"></span>
-  <button id="bannerContinue" class="primary" disabled
-          title="Transkrip ini jadi konteks chat; pesan baru ditambahkan ke sesi ini">Lanjutkan chat</button>
-  <button id="bannerClose">Tutup</button>
+<aside class="side" id="side">
+  <div class="side-top">
+    <button class="newchat" id="newChat" title="Mulai percakapan baru">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      Chat baru
+    </button>
+    <div class="side-search"><input id="convSearch" type="search" placeholder="Cari percakapan" autocomplete="off"></div>
+  </div>
+  <div class="side-label">Percakapan</div>
+  <div class="side-list" id="convList"></div>
+  <div class="side-foot">
+    <span class="who" id="who">…</span>
+    <span class="spacer"></span>
+    <button id="logout" title="Keluar dari sesi login">Keluar</button>
+  </div>
+</aside>
+<div class="side-overlay" id="sideOverlay"></div>
+
+<div class="chat">
+  <header class="topbar">
+    <button class="iconbtn" id="sideToggle" title="Buka/tutup sidebar" aria-label="Sidebar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <span class="dot" id="dot"></span>
+    <h1>Hermes</h1>
+    <span class="topTitle" id="topTitle"></span>
+    <button class="model" id="modelBtn" title="Pilih provider &amp; model">
+      <b id="modelProv">default</b><span id="modelName">memuat…</span>
+    </button>
+    <nav class="pages" aria-label="Navigasi halaman">
+      <a href="/" aria-current="page">Chat</a>
+      <a href="/agents" title="Papan kanban Hermes — status task per agent">Papan</a>
+      <a href="/workspace" title="Kantor virtual — siapa yang sedang bekerja">Workspace</a>
+    </nav>
+    <span class="spacer"></span>
+    <button id="auto" title="Jawab permintaan konfirmasi otomatis">⚡ Auto</button>
+    <button class="iconbtn" id="settings" title="Setelan: konfirmasi perintah" aria-label="Setelan">⚙</button>
+    <button class="iconbtn" id="history" title="Riwayat sesi" aria-label="Riwayat">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    </button>
+  </header>
+
+  <div class="banner" id="banner" style="display:none">
+    <span id="bannerText"></span><span class="spacer"></span>
+    <button id="bannerContinue" class="primary" disabled
+            title="Transkrip ini jadi konteks chat; pesan baru ditambahkan ke sesi ini">Lanjutkan chat</button>
+    <button id="bannerClose">Tutup</button>
+  </div>
+
+  <main class="thread" id="main">
+    <div class="wrap" id="wrap">
+      <div class="empty" id="empty">
+        <h2>Apa yang bisa saya bantu?</h2>
+        Chat langsung ke Hermes Agent — tool, memory, dan skills berjalan di server.<br>
+        Lampirkan dokumen (.docx, .pdf, .xlsx, .pptx, .txt, .csv, .json) atau gambar.
+        <div class="tips"><code>Enter</code> kirim · <code>Shift+Enter</code> baris baru · tempel gambar dengan <code>Ctrl+V</code></div>
+      </div>
+    </div>
+    <button class="to-bottom" id="toBottom" title="Ke pesan terbaru" aria-label="Ke bawah">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+    </button>
+  </main>
+
+  <footer class="composer-wrap">
+    <div class="composer" id="composer">
+      <div class="chips" id="chips"></div>
+      <div class="crow">
+        <button class="iconbtn clip" id="attach" title="Lampirkan file" aria-label="Lampirkan file">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M21 11.5l-8.8 8.8a5.5 5.5 0 01-7.8-7.8l8.5-8.5a3.7 3.7 0 015.2 5.2l-8.5 8.5a1.8 1.8 0 01-2.6-2.6l7.8-7.8"/></svg>
+        </button>
+        <textarea id="input" rows="1" placeholder="Tulis pesan…"></textarea>
+        <button class="sendbtn" id="send" title="Kirim (Enter)" aria-label="Kirim">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+        </button>
+        <button class="stopbtn" id="stop" title="Hentikan" aria-label="Hentikan" hidden>
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        </button>
+      </div>
+      <div class="hint">
+        <span id="status">siap</span>
+        <span class="mono" id="sid"></span>
+        <span class="spacer"></span>
+        <span id="hintAttach">lampiran maks 25 MB</span>
+      </div>
+    </div>
+  </footer>
 </div>
 
-<main id="main">
-  <div class="wrap" id="wrap">
-    <div class="empty" id="empty">
-      Chat langsung ke Hermes Agent.<br>
-      Tool call, memory, dan skills berjalan di server.<br><br>
-      <code>Enter</code> kirim &middot; <code>Shift+Enter</code> baris baru
-    </div>
-  </div>
-</main>
-
-<footer>
-  <div class="chips" id="chips" hidden></div>
-  <div class="composer">
-    <input type="file" id="fileInput" accept="image/*" multiple hidden>
-    <button type="button" class="attach" id="attach" title="Lampirkan gambar">📎</button>
-    <textarea id="input" rows="1" placeholder="Tulis pesan…"></textarea>
-    <button class="primary" id="send">Kirim</button>
-    <button class="danger" id="stop" hidden>Stop</button>
-  </div>
-  <div class="hint">
-    <span id="status">siap</span>
-    <span class="mono" id="sid"></span>
-  </div>
-</footer>
+<input type="file" id="fileInput" multiple hidden
+       accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.docx,.pdf,.txt,.md,.csv,.json,.log,.xlsx,.pptx">
 
 <div class="scrim" id="scrim"></div>
 
-<aside class="panel" id="histPanel">
+<aside class="panel left" id="histPanel">
   <header><h1>Riwayat sesi</h1><span class="spacer"></span>
-    <button id="histRefresh">Muat ulang</button><button id="histClose">✕</button></header>
+    <button id="histRefresh">Muat ulang</button><button id="histClose" class="iconbtn">✕</button></header>
   <div class="body" id="histBody"></div>
 </aside>
 
 <aside class="panel" id="settingsPanel">
-  <header><h1>Setelan</h1><span class="spacer"></span><button id="settingsClose">✕</button></header>
+  <header><h1>Setelan</h1><span class="spacer"></span><button id="settingsClose" class="iconbtn">✕</button></header>
   <div class="body" id="settingsBody"></div>
 </aside>
 
 <aside class="panel" id="modelPanel">
-  <header><h1>Provider &amp; model</h1><span class="spacer"></span><button id="modelClose">✕</button></header>
+  <header><h1>Provider &amp; model</h1><span class="spacer"></span><button id="modelClose" class="iconbtn">✕</button></header>
   <div style="padding:8px 8px 0"><input type="search" id="modelSearch" placeholder="Cari model…" autocomplete="off"></div>
   <div class="body" id="modelBody"></div>
 </aside>
+
+<div class="modal" id="modal">
+  <div class="modal-card">
+    <h3 id="modalTitle">Konfirmasi</h3>
+    <p id="modalText"></p>
+    <div class="modal-btns">
+      <button id="modalCancel">Batal</button>
+      <button id="modalOk" class="primary">Lanjutkan</button>
+    </div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <button class="lbclose" id="lbClose" title="Tutup">✕</button>
+  <img id="lightboxImg" alt="">
+</div>
 
 <script>
 (() => {
@@ -376,23 +584,32 @@
   const wrap = $("wrap"), main = $("main"), input = $("input");
   const sendBtn = $("send"), stopBtn = $("stop"), dot = $("dot");
   const statusEl = $("status"), sidEl = $("sid");
-  const LS = "hermes-webchat-v2";
+  const LS_CONV = "hermes-webchat-conv-v3";
+  const LS_PREF = "hermes-webchat-pref-v3";
 
-  let live = [];              // percakapan yang sedang berjalan
-  let sessionId = newSessionId();
-  let history = null;         // {id,title,source,messages:[]} saat menonton riwayat
+  let convs = [];                 // [{id,title,sessionId,messages,updated}]
+  let activeId = "";
+  let viewing = null;             // {id,title,source,messages} saat membaca riwayat
   let controller = null;
   let MODEL = "", PROVIDER = "";
-  let options = null;         // /api/model/options
-  let RUN_ID = null;          // run yang sedang berjalan (untuk stop & jawab approval)
-  let pendingImages = [];     // {path,url,name,bytes} sebelum kirim
-  let uploadsRunning = 0;
-  let limitRejected = 0;
-  const MAX_IMAGES_PER_MSG = 4;
-  const attachBtn = $("attach"), fileInput = $("fileInput"), chipsEl = $("chips");
-  const IMAGE_MARKER_RE = /\[Image attached at: ([^\]\n]+)\]/g;
-  let APPROVAL = "auto";      // "auto" = jalan tanpa konfirmasi, "ask" = tampilkan kartu
-  let AUTO_SCOPE = "session"; // scope jawaban otomatis: session | once | always
+  let options = null;             // /api/model/options
+  let RUN_ID = null;
+  let APPROVAL = "auto";          // "auto" = jalan tanpa konfirmasi, "ask" = tampilkan kartu
+  let AUTO_SCOPE = "session";
+  let sideCollapsed = false;
+  let stick = true;               // auto-scroll hanya kalau user masih di dasar
+  let pending = [];               // lampiran composer (uploading/ready/error)
+  let saveTimer = null;
+
+  const MAX_UPLOAD = 25 * 1024 * 1024;
+  const ALLOWED = /\.(png|jpe?g|gif|webp|bmp|docx|pdf|txt|md|csv|json|log|xlsx|pptx)$/i;
+
+  const CHOICE_LABEL = {
+    once: "Terima sekali",
+    session: "Terima untuk sesi ini",
+    always: "Selalu terima",
+    deny: "Tolak",
+  };
 
   // Model yang sudah terbukti TIDAK BISA DIPAKAI (hasil probe langsung ke provider).
   // Disembunyikan dari pemilih supaya tidak terpilih lalu gagal dengan galat provider.
@@ -405,39 +622,142 @@
     "gemini-4-argon-contributor",
   ]);
 
-  const CHOICE_LABEL = {
-    once: "Terima sekali",
-    session: "Terima untuk sesi ini",
-    always: "Selalu terima",
-    deny: "Tolak",
+  // Penanda gambar yang ditulis UI versi lama ke dalam teks pesan; dipakai untuk
+  // menampilkan thumbnail saat transkrip riwayat dibuka lagi.
+  const IMAGE_MARKER_RE = /\[Image attached at: ([^\]\n]+)\]/g;
+  const MAX_IMAGES_PER_MSG = 4;
+  // Sebagian provider memakai id ber-prefix ("google/gemini-3.1-pro-preview"),
+  // jadi cocokkan juga bagian setelah "/" supaya daftar di atas tetap berlaku.
+  const isHiddenModel = (mid) => HIDDEN_MODELS.has(mid)
+    || HIDDEN_MODELS.has(String(mid || "").split("/").pop());
+
+  // ---------------- util ----------------
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const now = () => Date.now() / 1000;
+  const uid = (p) => (p || "c") + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  function fmtSize(n) {
+    if (!n && n !== 0) return "";
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB";
+    return (n / 1024 / 1024).toFixed(1) + " MB";
+  }
+  const fmtNum = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "rb" : String(n));
+  function extOf(name) {
+    const m = /\.([a-z0-9]+)$/i.exec(name || "");
+    return m ? m[1].toLowerCase() : "";
+  }
+  function badgeFor(name) {
+    const e = extOf(name);
+    const map = { docx: "DOC", doc: "DOC", pdf: "PDF", xlsx: "XLS", pptx: "PPT", csv: "CSV",
+      json: "JSON", md: "MD", log: "LOG", txt: "TXT" };
+    if (["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(e)) return "IMG";
+    return map[e] || (e ? e.slice(0, 4).toUpperCase() : "FILE");
+  }
+  const dayKey = (ts) => {
+    const d = new Date((ts || 0) * 1000);
+    return d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate();
   };
+  function dayLabel(ts) {
+    const d = new Date((ts || 0) * 1000), t = new Date();
+    const k = (x) => x.getFullYear() + "-" + x.getMonth() + "-" + x.getDate();
+    if (k(d) === k(t)) return "Hari ini";
+    const y = new Date(t.getTime() - 86400000);
+    if (k(d) === k(y)) return "Kemarin";
+    return d.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  }
 
   // ---------------- persist ----------------
-  try {
-    const raw = JSON.parse(localStorage.getItem(LS) || "{}");
-    if (Array.isArray(raw.live)) live = raw.live;
-    if (typeof raw.sessionId === "string" && raw.sessionId) sessionId = raw.sessionId;
-    if (typeof raw.model === "string") MODEL = raw.model;
-    if (typeof raw.provider === "string") PROVIDER = raw.provider;
-    if (raw.approval === "ask" || raw.approval === "auto") APPROVAL = raw.approval;
-    else if (typeof raw.auto === "boolean") APPROVAL = raw.auto ? "auto" : "ask";  // setelan versi lama
-    if (["session", "once", "always"].includes(raw.autoScope)) AUTO_SCOPE = raw.autoScope;
-  } catch {}
-  const save = () => {
-    try { localStorage.setItem(LS, JSON.stringify({ live, sessionId, model: MODEL, provider: PROVIDER, approval: APPROVAL, autoScope: AUTO_SCOPE })); } catch {}
-  };
+  function loadState() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(LS_CONV) || "{}");
+      if (Array.isArray(raw.convs)) convs = raw.convs.filter((c) => c && Array.isArray(c.messages));
+      if (typeof raw.activeId === "string") activeId = raw.activeId;
+    } catch {}
+    if (!convs.length) {
+      // migrasi dari versi lama (satu percakapan bernama `live`)
+      try {
+        const old = JSON.parse(localStorage.getItem("hermes-webchat-v2") || "{}");
+        if (Array.isArray(old.live) && old.live.length) {
+          convs.push({ id: uid("chat"), title: titleOf(old.live) || "Percakapan lama",
+            sessionId: old.sessionId || newSessionId(), messages: old.live.map(withTs), updated: now() });
+        }
+        if (typeof old.model === "string") MODEL = old.model;
+        if (typeof old.provider === "string") PROVIDER = old.provider;
+        if (old.approval === "ask" || old.approval === "auto") APPROVAL = old.approval;
+        if (["session", "once", "always"].includes(old.autoScope)) AUTO_SCOPE = old.autoScope;
+      } catch {}
+    }
+    try {
+      const p = JSON.parse(localStorage.getItem(LS_PREF) || "{}");
+      if (typeof p.model === "string") MODEL = p.model;
+      if (typeof p.provider === "string") PROVIDER = p.provider;
+      if (p.approval === "ask" || p.approval === "auto") APPROVAL = p.approval;
+      if (["session", "once", "always"].includes(p.autoScope)) AUTO_SCOPE = p.autoScope;
+      sideCollapsed = !!p.sideCollapsed;
+    } catch {}
+    convs.forEach((c) => { if (!c.sessionId) c.sessionId = newSessionId(); if (!c.updated) c.updated = now(); });
+    if (!convs.length) convs.push(makeConv());
+    if (!convs.some((c) => c.id === activeId)) activeId = convs[0].id;
+  }
+  const withTs = (m) => (m && m.ts ? m : Object.assign({}, m, { ts: now() }));
   function newSessionId() {
     return "webchat-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
   }
+  function makeConv() {
+    return { id: uid("chat"), title: "", sessionId: newSessionId(), messages: [], updated: now() };
+  }
+  function active() {
+    let c = convs.find((x) => x.id === activeId);
+    if (!c) { c = makeConv(); convs.unshift(c); activeId = c.id; }
+    return c;
+  }
+  const current = () => (viewing ? viewing.messages : active().messages);
+
+  function save() {
+    try {
+      const payload = {
+        convs: convs.slice(0, 60).map((c) => ({
+          id: c.id, title: c.title, sessionId: c.sessionId, updated: c.updated,
+          // yang disimpan hanya metadata lampiran; isi teks cukup dipakai sekali saat kirim
+          messages: c.messages.slice(-300).map((m) => ({
+            role: m.role, text: m.text || "", ts: m.ts,
+            thinking: m.thinking || "",
+            tools: (m.tools || []).map((t) => ({ name: t.name, detail: t.detail, done: t.done,
+              duration: t.duration, error: t.error })),
+            atts: (m.atts || []).map((a) => ({ id: a.id, name: a.name, size: a.size, kind: a.kind,
+              mime: a.mime, truncated: a.truncated, chars: a.chars, path: a.path, url: a.url })),
+            error: m.error || "", detail: m.detail || "",
+          })),
+        })),
+        activeId,
+      };
+      localStorage.setItem(LS_CONV, JSON.stringify(payload));
+    } catch (e) {
+      // kuota penuh: buang percakapan terlama lalu coba sekali lagi
+      if (convs.length > 6) {
+        convs = convs.slice(0, Math.max(6, Math.floor(convs.length / 2)));
+        if (!convs.some((c) => c.id === activeId)) activeId = convs[0].id;
+        try { localStorage.setItem(LS_CONV, JSON.stringify({ convs, activeId })); } catch {}
+      }
+    }
+    try {
+      localStorage.setItem(LS_PREF, JSON.stringify({
+        model: MODEL, provider: PROVIDER, approval: APPROVAL, autoScope: AUTO_SCOPE,
+        sideCollapsed,
+      }));
+    } catch {}
+  }
+  const saveSoon = () => { clearTimeout(saveTimer); saveTimer = setTimeout(save, 400); };
 
   // ---------------- markdown ----------------
   // Mendukung: heading, paragraf, list bertingkat, blockquote, hr, tabel GFM,
-  // blok kode dengan label bahasa + tombol salin + pewarnaan ringan, dan tampilan
-  // pohon (folder/menu: output `tree`, `ls -R`, atau struktur berindentasi).
-  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // gambar, blok kode dengan label bahasa + tombol salin + pewarnaan ringan, dan
+  // tampilan pohon (folder/menu: output `tree`, `ls -R`, atau struktur berindentasi).
   function inline(s) {
     return s
       .replace(/`([^`\n]+)`/g, (_, c) => `<code>${c}</code>`)
+      .replace(/!\[([^\]\n]*)\]\((https?:\/\/[^\s)]+|\/api\/uploads\/[0-9a-f]{8})\)/g,
+        (m, alt, src) => `<img class="mimg" src="${src}" alt="${alt}" loading="lazy">`)
       .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
       .replace(/~~([^~\n]+)~~/g, "<del>$1</del>")
       .replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1<em>$2</em>")
@@ -460,16 +780,21 @@
     const l = cell.startsWith(":"), r = cell.endsWith(":");
     return l && r ? "center" : r ? "right" : l ? "left" : "";
   };
-  // sel sudah ter-escape (bagian non-kode di-escape lebih dulu)
   function tableHTML(rows, aligns) {
     const width = rows.reduce((n, r) => Math.max(n, r.length), 0);
+    // kolom yang seluruh sel datanya berupa angka -> rata kanan + font mono juga di header
+    const numeric = [];
+    for (let c = 0; c < width; c++) {
+      const vals = rows.slice(1).map((r) => (r[c] || "").trim()).filter(Boolean);
+      numeric[c] = vals.length > 0 && vals.every((v) => /\d/.test(v) && /^-?[\d.,%]+$/.test(v));
+    }
     let out = '<div class="tblwrap"><table>';
     rows.forEach((cells, ri) => {
       const tag = ri === 0 ? "th" : "td";
       out += "<tr>";
       for (let c = 0; c < width; c++) {
         const a = aligns[c];
-        const num = tag === "td" && /^-?[\d.,%]+$/.test((cells[c] || "").replace(/[^\d.,%-]/g, ""));
+        const num = numeric[c] && String(cells[c] || "").trim() !== "";
         const cls = [a ? "al-" + a : "", num ? "num" : ""].filter(Boolean).join(" ");
         out += `<${tag}${cls ? ` class="${cls}"` : ""}>${inline(cells[c] || "")}</${tag}>`;
       }
@@ -479,9 +804,6 @@
   }
 
   // ---- pohon (tree) ----
-  // Cocok untuk output `tree`, `ls -R`, atau menu bertingkat: setiap 4 karakter
-  // panduan (│ atau spasi) = satu level. Butuh minimal 2 baris bergaris cabang
-  // supaya teks berindentasi biasa tidak salah dibaca sebagai pohon.
   function treeShape(text) {
     const raw = String(text).replace(/\t/g, "    ").split("\n");
     const lines = raw.filter((l, i) => !(l.trim() === "" && i === raw.length - 1));
@@ -490,12 +812,10 @@
     let guides = 0;
     for (const line of lines) {
       if (!line.trim()) return null;
-      // satu level = satu blok 4 karakter panduan; baris bercabang (├──/└──/+--) naik
-      // satu level lagi, sebab garis itu sendiri menandakan "anak dari baris di atasnya".
       const m = /^((?:(?:[│|]| )[ ]{3})*)([├└`+][─-]{1,3}[ ]+)?(\S.*)$/.exec(line);
       if (!m) return null;
       if (m[2]) guides++;
-      const blocks = Math.floor(m[1].length / 4);   // tiap blok tepat 4 karakter, jangan di-trim
+      const blocks = Math.floor(m[1].length / 4);
       items.push({
         level: Math.min(blocks + (m[2] ? 1 : 0), 12),
         name: m[3],
@@ -504,7 +824,6 @@
     }
     return guides >= 2 ? items : null;
   }
-  // name sudah dalam bentuk siap-tampil (ter-escape pemanggil)
   function treeHTML(items) {
     let out = '<div class="tree"><ul>';
     const levels = [0];
@@ -529,11 +848,6 @@
   }
 
   // ---- blok kode ----
-  // Pewarnaan ringan (string, komentar, angka, kata kunci/perintah umum). Bukan
-  // parser per bahasa — cukup supaya kode enak dibaca, dan aman karena setiap
-  // token di-escape terpisah.
-  // Komentar `//` hanya di awal baris atau setelah spasi/;/() — supaya URL seperti
-  // `postgres://host` tidak salah diwarnai sebagai komentar.
   const HL = /((?:^|[\s;(])\/\/[^\n]*|(?:^|\s)#(?![0-9a-fA-F]{3,8}\b)[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)|((?<![\w.])\d+(?:\.\d+)?(?![\w.]))|(\b(?:function|const|let|var|if|else|elif|for|while|do|return|class|extends|new|import|export|from|require|def|lambda|try|except|catch|finally|raise|await|async|yield|with|as|in|of|not|and|or|True|False|None|null|true|false|undefined|this|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|JOIN|LEFT|GROUP|ORDER|BY|LIMIT|CREATE|TABLE|ALTER|DROP|VALUES|SET|npm|npx|node|python3?|git|cd|ls|cat|grep|find|sudo|rm|cp|mv|mkdir|chmod|chown|curl|wget|tar|zip|ssh|scp|docker|compose|systemctl|journalctl|pm2|psql|export|source|echo|awk|sed)\b)/g;
   function highlight(code) {
     let out = "", last = 0, m;
@@ -554,9 +868,6 @@
     if (!lang || ["tree", "txt", "text", "plain", "output"].includes(lang)) shape = treeShape(body);
     if (shape) return `<div class="cbox">${head}${treeHTML(shape)}</div>`;
     return `<div class="cbox">${head}<pre><code>${highlight(body)}</code></pre></div>`;
-  }
-  function codeBlockHTML(info, body) {
-    return codeHTML(info, body);
   }
 
   function md(src) {
@@ -642,7 +953,41 @@
     return out;
   }
 
-  // ---------------- render ----------------
+  // ---------------- render pesan ----------------
+  function attNode(a) {
+    const el = document.createElement("div");
+    el.className = "att" + (a.kind === "image" ? " img" : "");
+    if (a.kind === "image") {
+      const src = a.preview || a.url || (a.id ? "/api/uploads/" + a.id : "");
+      if (src) {
+        const img = document.createElement("img");
+        img.src = src;
+        img.alt = a.name || "gambar";
+        el.appendChild(img);
+        el.title = a.name || "";
+        return el;
+      }
+    }
+    const ic = document.createElement("span");
+    ic.className = "aico";
+    ic.textContent = badgeFor(a.name);
+    el.appendChild(ic);
+    const meta = document.createElement("div");
+    meta.className = "ameta";
+    const name = document.createElement("div");
+    name.className = "aname";
+    name.textContent = a.name || "file";
+    const sub = document.createElement("div");
+    sub.className = "asub";
+    const bits = [fmtSize(a.size)];
+    if (a.kind === "text" && a.chars) bits.push(fmtNum(a.chars) + " karakter");
+    if (a.truncated) bits.push("terpotong");
+    sub.textContent = bits.join(" · ");
+    meta.append(name, sub);
+    el.append(meta);
+    return el;
+  }
+
   function node(m, streaming) {
     const isTool = m.role === "tool";
     const el = document.createElement("div");
@@ -706,39 +1051,364 @@
       t.className = "text" + (streaming ? " cursor" : "");
       t.innerHTML = md(m.text);
       bubble.appendChild(t);
+    } else if (streaming && !(m.tools && m.tools.length)) {
+      const t = document.createElement("div");
+      t.className = "text";
+      t.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+      bubble.appendChild(t);
     }
-    if (m.images && m.images.length) {
+
+    if (m.atts && m.atts.length) {
       const box = document.createElement("div");
-      box.className = "msgimgs";
-      for (const im of m.images) {
-        if (im.url) {
-          const img = document.createElement("img");
-          img.className = "chatimg";
-          img.loading = "lazy";
-          img.src = im.url;
-          img.alt = im.name || "gambar";
-          box.appendChild(img);
-        } else {
-          const chip = document.createElement("span");
-          chip.className = "imgchip";
-          chip.textContent = "📎 " + (im.name || "gambar");
-          box.appendChild(chip);
-        }
-      }
+      box.className = "atts";
+      for (const a of m.atts) box.appendChild(attNode(a));
       bubble.appendChild(box);
     }
-    if (!m.text && !m.error && !isTool && !(m.images && m.images.length)
-        && streaming && !(m.tools && m.tools.length)) {
-      const t = document.createElement("div");
-      t.className = "text cursor";
-      bubble.appendChild(t);
+
+    if (!isTool && (m.text || m.atts)) {
+      const acts = document.createElement("div");
+      acts.className = "acts" + (streaming ? "" : "");
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = "Salin";
+      b.onclick = () => copyText(m.text || "", b);
+      acts.appendChild(b);
+      bubble.appendChild(acts);
     }
 
     el.appendChild(bubble);
     return el;
   }
 
-  const current = () => (history ? history.messages : live);
+  async function copyText(text, btn) {
+    if (!text) return;
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; }
+    catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.cssText = "position:fixed;top:-1000px;opacity:0";
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand("copy");
+        ta.remove();
+      } catch { ok = false; }
+    }
+    if (btn) {
+      const old = btn.textContent;
+      btn.textContent = ok ? "Tersalin ✓" : "Gagal";
+      setTimeout(() => { btn.textContent = old; }, 1400);
+    }
+  }
+
+  function render() {
+    const list = current();
+    $("empty").style.display = list.length ? "none" : "";
+    $("topTitle").textContent = viewing
+      ? (viewing.title || "Riwayat sesi")
+      : (active().title || titleOf(active().messages) || "Percakapan baru");
+    [...wrap.querySelectorAll(".msg, .daysep")].forEach((n) => n.remove());
+    const frag = document.createDocumentFragment();
+    let lastDay = "";
+    list.forEach((m, i) => {
+      const key = dayKey(m.ts);
+      if (key !== lastDay) {
+        lastDay = key;
+        const sep = document.createElement("div");
+        sep.className = "daysep";
+        sep.textContent = dayLabel(m.ts);
+        frag.appendChild(sep);
+      }
+      frag.appendChild(node(m, !!m.__streaming && i === list.length - 1));
+    });
+    wrap.appendChild(frag);
+    saveSoon();
+    if (stick) main.scrollTop = main.scrollHeight;
+    const on = !!list.some((m) => m.__streaming);
+    sendBtn.hidden = on;
+    stopBtn.hidden = !on;
+    input.disabled = on || !!viewing;
+    sendBtn.disabled = on || !!viewing;
+  }
+
+  function repaintLast() {
+    const list = current();
+    const last = list[list.length - 1];
+    if (!last) return;
+    const tail = wrap.lastElementChild;
+    const fresh = node(last, !!last.__streaming);
+    if (tail && tail.classList.contains("msg")) tail.replaceWith(fresh);
+    else wrap.appendChild(fresh);
+    saveSoon();
+    if (stick) main.scrollTop = main.scrollHeight;
+  }
+
+  // ---------------- sidebar ----------------
+  function titleOf(messages) {
+    const first = (messages || []).find((m) => m.role === "user" && (m.text || (m.atts || []).length));
+    if (!first) return "";
+    let t = (first.text || "").replace(/\s+/g, " ").trim();
+    if (!t && first.atts && first.atts.length) t = first.atts[0].name || "Lampiran";
+    return t.slice(0, 70);
+  }
+
+  function renderSidebar() {
+    const list = $("convList");
+    const q = ($("convSearch").value || "").trim().toLowerCase();
+    list.innerHTML = "";
+    const sorted = convs.slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
+    let shown = 0;
+    for (const c of sorted) {
+      const title = c.title || titleOf(c.messages) || "Percakapan baru";
+      if (q && !title.toLowerCase().includes(q)) continue;
+      shown++;
+      const el = document.createElement("div");
+      el.className = "conv" + (c.id === activeId && !viewing ? " active" : "");
+      el.title = title;
+      const t = document.createElement("span");
+      t.className = "ct";
+      t.textContent = title;
+      const x = document.createElement("button");
+      x.className = "cx";
+      x.textContent = "✕";
+      x.title = "Hapus percakapan";
+      x.onclick = async (ev) => {
+        ev.stopPropagation();
+        if (controller) { statusEl.textContent = "tunggu run selesai dulu"; return; }
+        const ok = await ask("Hapus percakapan?", `"${title}" akan dihapus dari browser ini.`, "Hapus");
+        if (!ok) return;
+        convs = convs.filter((k) => k.id !== c.id);
+        if (viewing) viewing = null;
+        if (!convs.length) convs.push(makeConv());
+        if (!convs.some((k) => k.id === activeId)) activeId = convs[0].id;
+        save();
+        renderSidebar();
+        render();
+      };
+      el.append(t, x);
+      el.onclick = () => selectConv(c.id);
+      list.appendChild(el);
+    }
+    if (!shown) {
+      const d = document.createElement("div");
+      d.className = "phead";
+      d.textContent = q ? "tidak ada yang cocok" : "belum ada percakapan";
+      list.appendChild(d);
+    }
+  }
+
+  function selectConv(id) {
+    if (controller) { statusEl.textContent = "tunggu run selesai dulu"; return; }
+    viewing = null;
+    $("banner").style.display = "none";
+    activeId = id;
+    const c = active();
+    c.updated = c.updated || now();
+    sidEl.textContent = c.sessionId;
+    statusEl.textContent = "siap";
+    closePanels();
+    stick = true;
+    renderSidebar();
+    render();
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.focus();
+  }
+
+  // ---------------- lampiran ----------------
+  function pushError(name, msg) {
+    pending.push({ uid: uid("a"), name, size: 0, status: "error", error: msg, kind: "text" });
+    paintChips();
+  }
+
+  function addFiles(files) {
+    const arr = Array.from(files || []);
+    if (!arr.length) return;
+    if (viewing) { statusEl.textContent = "tutup mode riwayat dulu"; return; }
+    let images = pending.filter((a) => a.kind === "image" && a.status !== "error").length;
+    for (const f of arr) {
+      const isImage = /^image\//.test(f.type || "") || /\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name || "");
+      if (!ALLOWED.test(f.name || "")) {
+        pushError(f.name || "file", "tipe tidak didukung");
+        continue;
+      }
+      if (f.size > MAX_UPLOAD) {
+        pushError(f.name || "file", "lebih dari 25 MB");
+        continue;
+      }
+      if (isImage && images >= MAX_IMAGES_PER_MSG) {
+        pushError(f.name || "gambar", "maksimal 4 gambar per pesan");
+        continue;
+      }
+      if (isImage) images++;
+      uploadOne(f);
+    }
+    paintChips();
+  }
+
+  function uploadOne(file) {
+    const item = {
+      uid: uid("a"), name: file.name, size: file.size, progress: 0, status: "uploading",
+      kind: /^image\//.test(file.type) || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name) ? "image" : "text",
+      preview: "",
+    };
+    pending.push(item);
+    paintChips();
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    const xhr = new XMLHttpRequest();
+    item.xhr = xhr;
+    xhr.open("POST", "/api/upload", true);
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        item.progress = Math.max(1, Math.round((ev.loaded / ev.total) * 100));
+        paintChips();
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status === 401) { location.replace("/login?next=" + encodeURIComponent(location.pathname)); return; }
+      let j = {};
+      try { j = JSON.parse(xhr.responseText || "{}"); } catch {}
+      if (xhr.status >= 200 && xhr.status < 300 && j.id) {
+        Object.assign(item, j, { status: "ready", progress: 100 });
+        if (!item.kind) item.kind = j.kind || "text";
+      } else {
+        item.status = "error";
+        item.error = j.detail || j.error || ("HTTP " + xhr.status);
+      }
+      delete item.xhr;
+      paintChips();
+      statusEl.textContent = "siap";
+    };
+    xhr.onerror = () => {
+      item.status = "error";
+      item.error = "koneksi gagal";
+      delete item.xhr;
+      paintChips();
+    };
+    xhr.send(fd);
+  }
+
+  function paintChips() {
+    const box = $("chips");
+    box.innerHTML = "";
+    for (const a of pending) {
+      const el = document.createElement("div");
+      el.className = "chip" + (a.status === "error" ? " err" : "");
+      if (a.kind === "image" && a.preview) {
+        const img = document.createElement("img");
+        img.className = "cthumb";
+        img.src = a.preview;
+        img.alt = a.name;
+        el.appendChild(img);
+      } else {
+        const ic = document.createElement("span");
+        ic.className = "cico";
+        ic.textContent = a.status === "error" ? "!" : badgeFor(a.name);
+        el.appendChild(ic);
+      }
+      const meta = document.createElement("div");
+      meta.className = "cmeta";
+      const nm = document.createElement("div");
+      nm.className = "cname";
+      nm.textContent = a.name;
+      const sub = document.createElement("div");
+      sub.className = "csub";
+      if (a.status === "uploading") sub.textContent = "mengunggah " + a.progress + "%";
+      else if (a.status === "error") sub.textContent = a.error || "gagal";
+      else sub.textContent = fmtSize(a.size) + (a.kind === "text" && a.chars ? " · " + fmtNum(a.chars) + " char" : "");
+      meta.append(nm, sub);
+      el.appendChild(meta);
+      const x = document.createElement("button");
+      x.className = "cx";
+      x.textContent = "✕";
+      x.title = "Hapus lampiran";
+      x.onclick = () => {
+        if (a.xhr) { try { a.xhr.abort(); } catch {} }
+        pending = pending.filter((k) => k !== a);
+        paintChips();
+        input.focus();
+      };
+      el.appendChild(x);
+      if (a.status === "uploading") {
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        bar.style.width = a.progress + "%";
+        el.appendChild(bar);
+      }
+      box.appendChild(el);
+    }
+    const uploading = pending.some((a) => a.status === "uploading");
+    sendBtn.disabled = uploading || !!controller || !!viewing;
+  }
+
+  // Susun prompt teks: dokumen ditempel isinya, gambar diberi path + instruksi vision.
+  function composeInput(text, atts) {
+    if (!atts.length) return text;
+    const lines = ["[Lampiran dari pengguna]"];
+    atts.forEach((a, i) => {
+      lines.push(`${i + 1}. ${a.name} (${a.mime || "?"}) — ${fmtSize(a.size)}, path: ${a.path}`);
+    });
+    const images = atts.filter((a) => a.kind === "image");
+    if (images.length) {
+      // Penanda ini juga dibaca UI saat transkrip dibuka lagi dari Riwayat,
+      // jadi thumbnail gambar tetap tampil setelah reload/histori.
+      for (const im of images) lines.push("[Image attached at: " + im.path + "]");
+      lines.push("",
+        "Catatan gambar: file gambar di atas tersimpan sebagai file di server. Untuk melihat isinya, " +
+        "panggil tool vision_analyze dengan image_url berisi path absolut gambar tersebut. " +
+        "Jangan menebak isi gambar tanpa membacanya lebih dulu.");
+    }
+    for (const a of atts) {
+      if (a.kind !== "text") continue;
+      lines.push("", `===== ISI ${a.name} =====`);
+      const body = (a.text || "").trim();
+      lines.push(body || "(teks tidak bisa diekstrak dari file ini; file tetap tersimpan di path di atas)");
+      if (a.truncated) lines.push(`[... isi dipotong, hanya ${fmtNum(a.chars || 0)} karakter pertama ...]`);
+      lines.push(`===== AKHIR ${a.name} =====`);
+    }
+    return (text ? text + "\n\n" : "") + lines.join("\n");
+  }
+
+  function activeAtts() {
+    return pending.filter((a) => a.status === "ready").map((a) => ({
+      id: a.id, name: a.name, size: a.size, mime: a.mime, kind: a.kind,
+      path: a.path, text: a.text || "", truncated: !!a.truncated, chars: a.chars || 0,
+    }));
+  }
+  const storedAtts = (atts) => atts.map((a) => ({
+    id: a.id, name: a.name, size: a.size, mime: a.mime, kind: a.kind,
+    truncated: a.truncated, chars: a.chars, path: a.path, url: a.url,
+  }));
+
+  const imageUrlFor = (p) => "/api/image?path=" + encodeURIComponent(p);
+
+  // UI versi lama menulis `[Image attached at: /path]` ke teks pesan. Saat
+  // transkrip riwayat dibuka lagi, penanda itu diubah jadi thumbnail dan
+  // placeholder `[screenshot]` dibuang (fitur yang sudah ada di remote).
+  function parseUserContent(raw) {
+    const paths = [];
+    IMAGE_MARKER_RE.lastIndex = 0;
+    let text = String(raw || "").replace(IMAGE_MARKER_RE, (_, p) => {
+      paths.push(String(p).trim());
+      return "";
+    });
+    // Buang blok prompt lampiran yang disusun composer ("[Lampiran dari pengguna]"
+    // + daftar berkas + isi dokumen + catatan gambar) supaya riwayat menampilkan
+    // pesan asli pengguna, bukan prompt internalnya.
+    const cut = text.indexOf("[Lampiran dari pengguna]");
+    if (cut >= 0) text = text.slice(0, cut);
+    text = text.replace(/^\[screenshot\]\s*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+    const atts = paths.filter((p) => p.startsWith("/")).map((p) => ({
+      kind: "image",
+      name: p.split("/").pop() || "gambar",
+      path: p,
+      url: imageUrlFor(p),
+    }));
+    return { text, atts };
+  }
 
   // ---------------- kartu konfirmasi ----------------
   function approvalCard(a) {
@@ -788,7 +1458,7 @@
 
   async function answerApproval(a, choice, auto) {
     a.state = auto ? "menjawab otomatis…" : "mengirim…";
-    render();
+    repaintLast();
     const payload = { choice };
     if (a.request_id) payload.request_id = a.request_id;
     if (a.execution_generation != null) payload.execution_generation = a.execution_generation;
@@ -812,66 +1482,18 @@
       a.ok = false;
       a.state = "Gagal menjawab: " + String(e);
     }
-    render();
+    repaintLast();
   }
 
-  // Pilihan untuk mode auto: ikuti scope yang dipilih user; "always" hanya dipakai
-  // kalau user memang memilihnya di Setelan (scope itu menulis allowlist permanen ke disk).
   function pickAutoChoice(choices) {
     const offered = (Array.isArray(choices) && choices.length ? choices : []).filter((c) => c !== "deny");
-    if (!offered.length) return "deny";   // server tidak menawarkan pilihan menerima
+    if (!offered.length) return "deny";
     const order = AUTO_SCOPE === "always" ? ["always", "session", "once"] : [AUTO_SCOPE, "session", "once"];
     for (const want of [...new Set(order)]) if (offered.includes(want)) return want;
     return offered[0];
   }
 
-  function render() {
-    const list = current();
-    $("empty").style.display = list.length ? "none" : "";
-    [...wrap.querySelectorAll(".msg")].forEach((n) => n.remove());
-    const frag = document.createDocumentFragment();
-    list.forEach((m, i) => frag.appendChild(node(m, !!m.__streaming && i === list.length - 1)));
-    wrap.appendChild(frag);
-    save();
-  }
-  function repaintLast() {
-    const list = current();
-    const last = list[list.length - 1];
-    if (!last) return;
-    const old = wrap.querySelector(".msg:last-child");
-    const fresh = node(last, true);
-    if (old) old.replaceWith(fresh); else wrap.appendChild(fresh);
-    main.scrollTop = main.scrollHeight;
-  }
-
   // ---------------- event stream (Runs API) ----------------
-  // POST /v1/runs membuat run; GET /v1/runs/{id}/events mengalirkan eventnya. Dipilih
-  // daripada /v1/chat/completions karena di sinilah argumen tool, durasi, status gagal,
-  // dan permintaan konfirmasi (approval.request) benar-benar dikirim.
-  function handleEvent(evt, data, cur) {
-    if (evt === "hermes.tool.progress") {                 // kompat: jalur chat completions
-      if (data.status === "completed" || data.status === "failed") {
-        const last = cur.tools[cur.tools.length - 1];
-        if (last) last.done = true;
-        repaintLast();
-        return;
-      }
-      const name = data.tool || data.name || "tool";
-      const detail = data.preview || data.label || data.command || "";
-      if (!cur.tools.some((t) => t.name === name && t.detail === detail)) {
-        cur.tools.push({ name, detail, done: false });
-      }
-      repaintLast();
-      return;
-    }
-    const choice = (data.choices || [])[0];
-    if (choice) {                                         // kompat: chat completions chunk
-      const d = choice.delta || {};
-      if (d.reasoning_content) { cur.thinking = (cur.thinking || "") + d.reasoning_content; repaintLast(); }
-      if (d.content) { cur.text += d.content; repaintLast(); }
-    }
-  }
-
   function handleRunEvent(j, evt, cur) {
     const kind = j.event || evt || "";
     switch (kind) {
@@ -906,8 +1528,6 @@
         };
         cur.approvals.push(a);
         if (APPROVAL === "auto") {
-          // Tidak ada kartu yang perlu diklik: jawab langsung di jalur event yang sama,
-          // supaya run tidak berhenti menunggu (timeout approval default 5 menit).
           statusEl.textContent = "konfirmasi otomatis…";
           repaintLast();
           answerApproval(a, pickAutoChoice(a.choices), true);
@@ -918,11 +1538,11 @@
         return;
       }
       case "approval.responded": {
-        const pending = cur.approvals.filter((a) => !a.answered).pop();
-        if (pending) {
-          pending.answered = true;
-          pending.ok = j.choice !== "deny";
-          pending.state = "Dijawab: " + (CHOICE_LABEL[j.choice] || j.choice || "");
+        const pendingApproval = cur.approvals.filter((a) => !a.answered).pop();
+        if (pendingApproval) {
+          pendingApproval.answered = true;
+          pendingApproval.ok = j.choice !== "deny";
+          pendingApproval.state = "Dijawab: " + (CHOICE_LABEL[j.choice] || j.choice || "");
         }
         repaintLast();
         return;
@@ -940,7 +1560,6 @@
       case "run.completed":
         if (j.output) cur.text = j.output;
         if (j.usage) cur.usage = j.usage;
-        cur.approvals.forEach((a) => { if (!a.answered) a.state = a.state || ""; });
         statusEl.textContent = "selesai";
         return;
       case "run.failed":
@@ -962,168 +1581,31 @@
     }
   }
 
-  // ---------------- lampiran gambar ----------------
-  function humanSize(n) {
-    if (n < 1024) return n + " B";
-    if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB";
-    return (n / (1024 * 1024)).toFixed(1) + " MB";
-  }
-
-  function syncSendDisabled() {
-    if (controller || history || uploadsRunning > 0) sendBtn.disabled = true;
-    else sendBtn.disabled = false;
-  }
-
-  function renderChips() {
-    chipsEl.innerHTML = "";
-    if (!pendingImages.length) {
-      chipsEl.hidden = true;
-      syncSendDisabled();
-      return;
-    }
-    chipsEl.hidden = false;
-    for (const im of pendingImages) {
-      const chip = document.createElement("div");
-      chip.className = "chip";
-      const thumb = document.createElement("img");
-      thumb.src = im.url;
-      thumb.alt = "";
-      const nm = document.createElement("span");
-      nm.className = "nm";
-      nm.textContent = im.name || "gambar";
-      const sz = document.createElement("span");
-      sz.className = "sz";
-      sz.textContent = humanSize(im.bytes || 0);
-      const rm = document.createElement("button");
-      rm.type = "button";
-      rm.className = "rm";
-      rm.textContent = "×";
-      rm.title = "Hapus";
-      rm.onclick = () => {
-        pendingImages = pendingImages.filter((x) => x.path !== im.path);
-        renderChips();
-      };
-      chip.append(thumb, nm, sz, rm);
-      chipsEl.appendChild(chip);
-    }
-    syncSendDisabled();
-  }
-
-  async function uploadImageFile(file) {
-    if (input.disabled) return;
-    if (pendingImages.length + uploadsRunning >= MAX_IMAGES_PER_MSG) {
-      limitRejected += 1;
-      statusEl.textContent = "maksimal 4 gambar per pesan";
-      return;
-    }
-    uploadsRunning += 1;
-    syncSendDisabled();
-    statusEl.textContent = "mengunggah gambar…";
-    try {
-      const fd = new FormData();
-      fd.append("file", file, file.name || "gambar");
-      const r = await fetch("/api/upload", { method: "POST", body: fd });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        if (r.status === 413) statusEl.textContent = "gambar terlalu besar (maks 12 MB)";
-        else if (r.status === 415) statusEl.textContent = "format tidak didukung (JPEG/PNG/GIF/WebP)";
-        else statusEl.textContent = j.detail || j.error || ("gagal mengunggah (" + r.status + ")");
-        return;
-      }
-      pendingImages.push({ path: j.path, url: j.url, name: j.name || file.name || "gambar", bytes: j.bytes });
-      renderChips();
-      statusEl.textContent = "siap";
-    } catch (e) {
-      statusEl.textContent = "gagal mengunggah: " + String(e);
-    } finally {
-      uploadsRunning -= 1;
-      syncSendDisabled();
-      if (uploadsRunning === 0 && limitRejected > 0) {
-        statusEl.textContent = "maksimal 4 gambar per pesan";
-        limitRejected = 0;
-      }
-    }
-  }
-
-  function uploadFiles(fileList) {
-    limitRejected = 0;
-    const files = [...fileList].filter((f) => f && f.type && f.type.startsWith("image/"));
-    for (const f of files) uploadImageFile(f);
-  }
-
-  function stripShotMarker(t) {
-    return t.replace(/^\[screenshot\]\s*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
-  }
-
-  function parseUserContent(raw) {
-    const paths = [];
-    let t = raw;
-    IMAGE_MARKER_RE.lastIndex = 0;
-    t = t.replace(IMAGE_MARKER_RE, (_, p) => { paths.push(p.trim()); return ""; });
-    t = t.replace(/^\[screenshot\]\s*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
-    const images = paths.map((p) => {
-      const base = p.split("/").pop() || "gambar";
-      const allowed = p.startsWith("/root/.hermes/cache/webchat-images/")
-        || p.startsWith("/root/.hermes/cache/images/");
-      return {
-        path: p,
-        name: base,
-        url: allowed ? ("/api/image?path=" + encodeURIComponent(p)) : null,
-      };
-    });
-    return { text: t, images };
-  }
-
-  attachBtn.onclick = () => { if (!input.disabled) fileInput.click(); };
-  fileInput.onchange = () => {
-    uploadFiles(fileInput.files || []);
-    fileInput.value = "";
-  };
-
-  document.addEventListener("dragover", (e) => { e.preventDefault(); });
-  document.addEventListener("drop", (e) => { e.preventDefault(); });
-  main.addEventListener("dragenter", (e) => { e.preventDefault(); main.classList.add("dragover"); });
-  main.addEventListener("dragover", (e) => { e.preventDefault(); main.classList.add("dragover"); });
-  main.addEventListener("dragleave", (e) => {
-    if (!main.contains(e.relatedTarget)) main.classList.remove("dragover");
-  });
-  main.addEventListener("drop", (e) => {
-    e.preventDefault();
-    main.classList.remove("dragover");
-    if (e.dataTransfer && e.dataTransfer.files) uploadFiles(e.dataTransfer.files);
-  });
-
-  document.addEventListener("paste", (e) => {
-    if (input.disabled || !e.clipboardData) return;
-    const imgs = [];
-    for (const item of e.clipboardData.items) {
-      if (item.kind === "file" && item.type.startsWith("image/")) {
-        const f = item.getAsFile();
-        if (f) imgs.push(f);
-      }
-    }
-    if (imgs.length) {
-      e.preventDefault();
-      uploadFiles(imgs);
-    }
-  });
-
   // ---------------- kirim ----------------
   async function send() {
+    if (controller || viewing) return;
     const text = input.value.trim();
-    if ((!text && !pendingImages.length) || controller || history || uploadsRunning) return;
+    const atts = activeAtts();
+    if (pending.some((a) => a.status === "uploading")) {
+      statusEl.textContent = "tunggu unggahan selesai…";
+      return;
+    }
+    if (!text && !atts.length) return;
 
-    const sentImages = pendingImages.slice();
-    const markers = sentImages.map((p) => "[Image attached at: " + p.path + "]").join("\n");
-    const payload = text ? (text + "\n\n" + markers) : markers;
-
+    const conv = active();
+    const prompt = composeInput(text, atts);
+    conv.messages.push({ role: "user", text, atts: storedAtts(atts), ts: now() });
+    if (!conv.title) conv.title = titleOf(conv.messages) || "Percakapan baru";
+    const cur = { role: "assistant", text: "", thinking: "", tools: [], approvals: [],
+      __streaming: true, ts: now() };
+    conv.messages.push(cur);
+    conv.updated = now();
     input.value = "";
-    pendingImages = [];
-    renderChips();
     autoGrow();
-    live.push({ role: "user", text, images: sentImages });
-    const cur = { role: "assistant", text: "", thinking: "", tools: [], approvals: [], __streaming: true };
-    live.push(cur);
+    pending = [];
+    paintChips();
+    stick = true;
+    renderSidebar();
     render();
     main.scrollTop = main.scrollHeight;
 
@@ -1132,12 +1614,11 @@
     statusEl.textContent = "mengirim…";
     dot.className = "dot on";
 
-    const body = { input: payload, session_id: sessionId };
+    const body = { input: prompt, session_id: conv.sessionId };
     if (MODEL) body.model = MODEL;
-    if (PROVIDER) body.provider = PROVIDER;      // provider eksplisit selalu dihormati
+    if (PROVIDER) body.provider = PROVIDER;
 
     try {
-      // 1. buat run
       const res = await fetch("/v1/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1155,7 +1636,6 @@
       RUN_ID = created.run_id;
       statusEl.textContent = "berjalan…";
 
-      // 2. ikuti eventnya sampai run selesai
       const ev = await fetch(`/v1/runs/${encodeURIComponent(RUN_ID)}/events`, { signal: controller.signal });
       if (!ev.ok || !ev.body) {
         cur.error = "Tidak bisa membuka stream event";
@@ -1176,7 +1656,7 @@
           buf = buf.slice(idx + 2);
           let evt = null, data = "";
           for (const line of block.split("\n")) {
-            if (line.startsWith(":")) continue;               // baris keepalive
+            if (line.startsWith(":")) continue;
             if (line.startsWith("event:")) evt = line.slice(6).trim();
             else if (line.startsWith("data:")) data += line.slice(5).trim();
           }
@@ -1199,7 +1679,9 @@
       cur.__streaming = false;
       controller = null;
       RUN_ID = null;
-      sendBtn.hidden = false; stopBtn.hidden = true;
+      conv.updated = now();
+      if (!conv.title) conv.title = titleOf(conv.messages);
+      renderSidebar();
       render();
       main.scrollTop = main.scrollHeight;
       input.focus();
@@ -1283,10 +1765,11 @@
       const msgs = [];
       for (const m of j.data || []) {
         if (m.role === "system") continue;
-        if (m.role === "tool") { msgs.push({ role: "tool", tool: m.tool_name || "tool", text: stripShotMarker(textOf(m.content)) }); continue; }
+        const ts = m.timestamp || m.created_at || now();
+        if (m.role === "tool") { msgs.push({ role: "tool", tool: m.tool_name || "tool", text: textOf(m.content), ts }); continue; }
         if (m.role === "user") {
           const parsed = parseUserContent(textOf(m.content));
-          msgs.push({ role: "user", text: parsed.text, images: parsed.images });
+          msgs.push({ role: "user", text: parsed.text, atts: parsed.atts, ts });
           continue;
         }
         const tools = (m.tool_calls || []).map((tc) => ({
@@ -1294,19 +1777,19 @@
           detail: String(tc.function?.arguments || tc.arguments || "").slice(0, 160),
           done: true,
         }));
-        const t = stripShotMarker(textOf(m.content));
+        const t = textOf(m.content);
         const think = m.reasoning_content || m.reasoning || "";
-        if (t || tools.length || think) msgs.push({ role: "assistant", text: t, thinking: think, tools });
+        if (t || tools.length || think) msgs.push({ role: "assistant", text: t, thinking: think, tools, ts });
       }
-      history = { id: s.id, title: s.title, source: s.source, messages: msgs };
+      viewing = { id: s.id, title: s.title, source: s.source, messages: msgs };
       $("bannerText").textContent =
         `Riwayat · ${s.title || "(tanpa judul)"} · sumber ${s.source} · ${msgs.length} pesan`;
       $("bannerContinue").disabled = false;
-      input.disabled = true;
-      sendBtn.disabled = true;
       statusEl.textContent = "mode riwayat";
       sidEl.textContent = s.id;
+      stick = false;
       render();
+      renderSidebar();
       main.scrollTop = 0;
     } catch (e) {
       $("bannerText").textContent = "Gagal memuat riwayat: " + String(e);
@@ -1314,35 +1797,41 @@
   }
 
   $("bannerClose").onclick = () => {
-    history = null;
+    viewing = null;
     $("banner").style.display = "none";
-    input.disabled = false;
-    syncSendDisabled();
+    if (!controller) {
+      input.disabled = false;
+      sendBtn.disabled = false;
+    }
     statusEl.textContent = "siap";
-    sidEl.textContent = sessionId;
+    sidEl.textContent = active().sessionId;
+    stick = true;
     render();
+    renderSidebar();
   };
 
-  // Lanjutkan: transkrip riwayat yang sedang dilihat menjadi konteks chat
-  // berjalan dan session_id diarahkan ke sesi itu — pesan berikutnya dikirim
-  // lewat POST /v1/runs dengan session_id tersebut, jadi ditambahkan ke sesi
-  // yang SAMA (bukan salinan/fork). Berlaku untuk sesi dari semua sumber
-  // (CLI/TUI/dashboard), bukan hanya yang dibuat halaman ini.
+  // Lanjutkan: transkrip riwayat menjadi konteks chat berjalan dengan session_id
+  // sesi itu — pesan berikutnya masuk ke sesi yang SAMA (bukan salinan/fork).
   $("bannerContinue").onclick = () => {
-    if (!history) return;
+    if (!viewing) return;
     if (controller) { statusEl.textContent = "tunggu run selesai dulu"; return; }
-    const target = history;
-    live = target.messages;
-    sessionId = target.id;
-    history = null;
+    const target = viewing;
+    const conv = makeConv();
+    conv.title = target.title || "Lanjutan sesi";
+    conv.sessionId = target.id;
+    conv.messages = target.messages;
+    convs.unshift(conv);
+    activeId = conv.id;
+    viewing = null;
     $("banner").style.display = "none";
     input.disabled = false;
-    syncSendDisabled();
-    sidEl.textContent = sessionId;
+    sendBtn.disabled = false;
+    sidEl.textContent = conv.sessionId;
     statusEl.textContent = "melanjutkan sesi (" + (target.source || "?") + ") — pesan baru masuk ke sesi ini";
     save();
+    renderSidebar();
+    stick = true;
     render();
-    main.scrollTop = main.scrollHeight;
     input.focus();
   };
 
@@ -1359,14 +1848,14 @@
     const rows = [];
     for (const p of options.providers || []) {
       for (const mid of p.models || []) {
-        if (HIDDEN_MODELS.has(mid)) continue;            // model mati: jangan ditampilkan
+        if (isHiddenModel(mid)) continue;                // model mati: jangan ditampilkan
         if (needle && !(p.slug + " " + p.name + " " + mid).toLowerCase().includes(needle)) continue;
         rows.push({ prov: p.slug, name: p.name, authed: !!p.authenticated, mid });
       }
     }
     rows.sort((a, b) => (b.authed - a.authed) || a.prov.localeCompare(b.prov) || a.mid.localeCompare(b.mid));
     body.innerHTML = "";
-    const CAP = 300;                                     // daftar ~100 model; CAP menjaga render tetap ringan
+    const CAP = 300;
     for (const r of rows.slice(0, CAP)) {
       const el = document.createElement("div");
       el.className = "mrow" + (r.authed ? "" : " na") + (r.mid === MODEL && r.prov === PROVIDER ? " sel" : "");
@@ -1394,24 +1883,19 @@
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "gagal");
       options = j;
-      // Pilihan tersimpan (localStorage) bisa menunjuk model yang sudah mati — mis. gemini-2.5-flash.
-      // Tanpa ini, setiap kirim pesan gagal 404 NOT_FOUND dari provider.
-      if (HIDDEN_MODELS.has(MODEL)) {
-        // Utamakan model default server (kini DeepSeek via OpenCode Go); Gemini hanya cadangan.
-        let sehat = "", prov = "";
-        if (j.model && !HIDDEN_MODELS.has(j.model)) { sehat = j.model; prov = j.provider || ""; }
-        if (!sehat) {
+      if (!MODEL) { MODEL = j.model || "hermes-agent"; PROVIDER = j.provider || ""; save(); }
+      else if (isHiddenModel(MODEL)) {
+        // model tersimpan sudah terbukti mati → pindah ke model sehat pertama
+        let picked = (j.model && !isHiddenModel(j.model)) ? j.model : "";
+        let prov = j.provider || "";
+        if (!picked) {
           for (const p of j.providers || []) {
-            const m = (p.models || []).find((x) => !HIDDEN_MODELS.has(x));
-            if (m) { sehat = m; prov = p.slug; break; }
+            const m = (p.models || []).find((x) => !isHiddenModel(x));
+            if (m) { picked = m; prov = p.slug; break; }
           }
         }
-        if (sehat) {
-          MODEL = sehat; PROVIDER = prov; save();
-          statusEl.textContent = "model diganti otomatis: " + prov + " · " + sehat;
-        }
+        if (picked) { MODEL = picked; PROVIDER = prov; save(); }
       }
-      if (!MODEL) { MODEL = j.model || "hermes-agent"; PROVIDER = j.provider || ""; save(); }
       paintModel();
       renderModelList($("modelSearch").value);
     } catch (e) {
@@ -1431,7 +1915,8 @@
 
   // ---------------- sesi login ----------------
   $("logout").onclick = async () => {
-    if (live.length && !confirm("Keluar dari sesi login ini? Percakapan yang belum tersimpan akan hilang.")) return;
+    const ok = await ask("Keluar dari sesi ini?", "Percakapan di browser tetap tersimpan, tapi kamu harus login lagi untuk melanjutkan.", "Keluar");
+    if (!ok) return;
     try { await fetch("/logout", { method: "POST", headers: { "Accept": "application/json" } }); } catch {}
     location.replace("/login");
   };
@@ -1440,8 +1925,8 @@
       const r = await fetch("/healthz", { cache: "no-store" });
       const j = await r.json();
       if (j.user) { $("who").textContent = j.user; $("who").title = "Login sebagai " + j.user; }
-      else { $("who").style.display = "none"; }
-    } catch { $("who").style.display = "none"; }
+      else { $("who").textContent = ""; }
+    } catch { $("who").textContent = ""; }
   }
 
   // ---------------- setelan: konfirmasi perintah ----------------
@@ -1459,7 +1944,7 @@
   function paintAuto() {
     const b = $("auto");
     b.textContent = APPROVAL === "auto" ? "⚡ Auto: ON" : "⚡ Auto: OFF";
-    b.classList.toggle("primary", APPROVAL === "auto");
+    b.classList.toggle("on", APPROVAL === "auto");
     b.title = (APPROVAL === "auto"
       ? "Jalan tanpa konfirmasi — permintaan konfirmasi dijawab otomatis (" + SCOPE_LABEL[AUTO_SCOPE] + ")."
       : "Tanya dulu — permintaan konfirmasi menunggu klikmu.")
@@ -1478,10 +1963,8 @@
     const h = document.createElement("div");
     h.className = "hint2";
     h.textContent = hint;
-    box.appendChild(l);
-    box.appendChild(h);
-    row.appendChild(mark);
-    row.appendChild(box);
+    box.append(l, h);
+    row.append(mark, box);
     row.onclick = () => {
       pick();
       save();
@@ -1533,9 +2016,9 @@
 
     const note = document.createElement("div");
     note.className = "setnote";
-    note.textContent = "Setelan ini tersimpan per-browser (localStorage) dan hanya berlaku untuk halaman web ini "
-      + "— TUI, dashboard, dan Open WebUI punya kebijakannya sendiri.\n"
-      + "Perintah yang diblokir hardline oleh Hermes tetap ditolak: halaman ini tidak bisa meloloskannya.";
+    note.textContent = "Setelan ini tersimpan per-browser (localStorage) dan hanya berlaku untuk halaman web ini " +
+      "— TUI, dashboard, dan Open WebUI punya kebijakannya sendiri.\n" +
+      "Perintah yang diblokir hardline oleh Hermes tetap ditolak: halaman ini tidak bisa meloloskannya.";
     body.appendChild(note);
   }
 
@@ -1547,29 +2030,43 @@
     statusEl.textContent = APPROVAL === "auto"
       ? "tanpa konfirmasi: aktif · " + SCOPE_LABEL[AUTO_SCOPE]
       : "konfirmasi: tanya dulu";
-    render();
   };
   $("settings").onclick = () => { openPanel("settingsPanel"); renderSettings(); };
 
-  // ---------------- misc ----------------
-  function autoGrow() {
-    input.style.height = "auto";
-    input.style.height = Math.min(input.scrollHeight, 210) + "px";
+  // ---------------- modal & lightbox ----------------
+  let modalResolve = null;
+  function ask(title, text, okLabel) {
+    $("modalTitle").textContent = title;
+    $("modalText").textContent = text || "";
+    $("modalOk").textContent = okLabel || "Lanjutkan";
+    $("modal").classList.add("open");
+    setTimeout(() => $("modalOk").focus(), 30);
+    return new Promise((resolve) => { modalResolve = resolve; });
   }
-  async function probe() {
-    try {
-      const r = await fetch("/api/models", { cache: "no-store" });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || "gagal");
-      dot.className = "dot on";
-    } catch (e) {
-      dot.className = "dot off";
-      if (!history) statusEl.textContent = "API server offline — lihat README webchat";
-    }
+  function closeModal(result) {
+    $("modal").classList.remove("open");
+    const fn = modalResolve;
+    modalResolve = null;
+    if (fn) fn(result);
   }
+  $("modalOk").onclick = () => closeModal(true);
+  $("modalCancel").onclick = () => closeModal(false);
+  $("modal").onclick = (ev) => { if (ev.target === $("modal")) closeModal(false); };
 
-  // delegasi: tombol "Salin" di blok kode + buka/tutup folder di tampilan pohon.
-  // Dipasang sekali di #wrap sebab isi transkrip di-render ulang terus saat streaming.
+  function openLightbox(src, alt) {
+    $("lightboxImg").src = src;
+    $("lightboxImg").alt = alt || "";
+    $("lightbox").classList.add("open");
+  }
+  function closeLightbox() {
+    $("lightbox").classList.remove("open");
+    $("lightboxImg").src = "";
+  }
+  $("lightbox").onclick = (ev) => {
+    if (ev.target === $("lightbox") || ev.target.id === "lbClose") closeLightbox();
+  };
+
+  // delegasi: tombol "Salin" blok kode, folder pohon, klik gambar -> lightbox
   wrap.addEventListener("click", async (ev) => {
     const btn = ev.target.closest(".copy");
     if (btn) {
@@ -1594,28 +2091,146 @@
       setTimeout(() => { btn.textContent = "Salin"; }, 1500);
       return;
     }
+    const img = ev.target.closest("img.mimg, .att.img img");
+    if (img) { openLightbox(img.src, img.alt); return; }
     const row = ev.target.closest(".tree li.dir > .row");
     if (row) row.parentElement.classList.toggle("closed");
   });
 
+  // ---------------- misc ----------------
+  function autoGrow() {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 220) + "px";
+  }
+  async function probe() {
+    try {
+      const r = await fetch("/api/models", { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "gagal");
+      dot.className = "dot on";
+    } catch (e) {
+      dot.className = "dot off";
+      if (!viewing) statusEl.textContent = "API server offline — lihat README webchat";
+    }
+  }
+
+  // auto-scroll hanya kalau user masih di dasar thread
+  main.addEventListener("scroll", () => {
+    const gap = main.scrollHeight - main.scrollTop - main.clientHeight;
+    stick = gap < 120;
+    $("toBottom").classList.toggle("show", gap > 320);
+  });
+  $("toBottom").onclick = () => {
+    stick = true;
+    main.scrollTop = main.scrollHeight;
+    $("toBottom").classList.remove("show");
+  };
+
+  // sidebar: desktop => lipat; mobile => drawer
+  const isMobile = () => window.matchMedia("(max-width:860px)").matches;
+  function paintSide() {
+    if (isMobile()) {
+      document.body.classList.remove("side-collapsed");
+      document.body.classList.remove("side-open");
+    } else {
+      document.body.classList.remove("side-open");
+      document.body.classList.toggle("side-collapsed", sideCollapsed);
+    }
+  }
+  $("sideToggle").onclick = () => {
+    if (isMobile()) {
+      document.body.classList.toggle("side-open");
+    } else {
+      sideCollapsed = !sideCollapsed;
+      paintSide();
+      save();
+    }
+  };
+  $("sideOverlay").onclick = () => document.body.classList.remove("side-open");
+  window.addEventListener("resize", paintSide);
+
+  // composer: lampiran
+  $("attach").onclick = () => $("fileInput").click();
+  $("fileInput").onchange = (ev) => {
+    addFiles(ev.target.files);
+    ev.target.value = "";
+  };
+  input.addEventListener("paste", (ev) => {
+    const files = ev.clipboardData && ev.clipboardData.files;
+    if (files && files.length) {
+      ev.preventDefault();
+      addFiles(files);
+    }
+  });
+  let dragDepth = 0;
+  window.addEventListener("dragenter", (ev) => {
+    if (!ev.dataTransfer || !Array.from(ev.dataTransfer.types || []).includes("Files")) return;
+    dragDepth++;
+    $("composer").classList.add("drag");
+  });
+  window.addEventListener("dragover", (ev) => {
+    if (ev.dataTransfer) ev.preventDefault();
+  });
+  window.addEventListener("dragleave", () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) $("composer").classList.remove("drag");
+  });
+  window.addEventListener("drop", (ev) => {
+    if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length) {
+      ev.preventDefault();
+      dragDepth = 0;
+      $("composer").classList.remove("drag");
+      addFiles(ev.dataTransfer.files);
+    }
+  });
+
   sendBtn.onclick = send;
   stopBtn.onclick = stopRun;
-  $("clear").onclick = () => {
-    if (history) { $("bannerClose").onclick(); return; }
-    if (live.length && !confirm("Hapus percakapan ini?")) return;
-    live = []; sessionId = newSessionId();
-    sidEl.textContent = sessionId;
-    render(); input.focus();
+  $("newChat").onclick = () => {
+    if (controller) { statusEl.textContent = "tunggu run selesai dulu"; return; }
+    if (viewing) {
+      viewing = null;
+      $("banner").style.display = "none";
+    }
+    const conv = makeConv();
+    convs.unshift(conv);
+    activeId = conv.id;
+    pending = [];
+    paintChips();
+    save();
+    closePanels();
+    renderSidebar();
+    render();
+    sidEl.textContent = conv.sessionId;
+    statusEl.textContent = "siap";
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.value = "";
+    autoGrow();
+    stick = true;
+    input.focus();
   };
+  $("convSearch").oninput = renderSidebar;
+
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
   });
   input.addEventListener("input", autoGrow);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePanels(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if ($("lightbox").classList.contains("open")) return closeLightbox();
+    if ($("modal").classList.contains("open")) return closeModal(false);
+    if ($("histPanel").classList.contains("open") || $("modelPanel").classList.contains("open") ||
+        $("settingsPanel").classList.contains("open")) return closePanels();
+    document.body.classList.remove("side-open");
+  });
 
-  renderChips();
+  // ---------------- init ----------------
+  loadState();
+  paintSide();
+  renderSidebar();
   render();
-  sidEl.textContent = sessionId;
+  sidEl.textContent = active().sessionId;
   paintModel();
   paintAuto();
   renderSettings();
@@ -1623,6 +2238,7 @@
   loadWho();
   probe();
   setInterval(probe, 20000);
+  autoGrow();
   input.focus();
 })();
 </script>

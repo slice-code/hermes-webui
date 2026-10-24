@@ -8,42 +8,114 @@ sungguhan yang bicara ke **API server Hermes** yang OpenAI-compatible.
 - **http://192.168.1.4:8650** (dari LAN) atau http://127.0.0.1:8650 (di server)
 - Login dulu (lihat bagian **Login**) — tanpa sesi, semua halaman dialihkan ke `/login`
 - Enter = kirim, Shift+Enter = baris baru
-- Tool call muncul sebagai chip inline; reasoning muncul sebagai blok yang bisa dilipat
-- Tombol **Chat baru** mengosongkan percakapan; riwayat disimpan di localStorage browser
+- **Sidebar kiri** berisi daftar percakapan (localStorage), tombol **Chat baru**, pencarian, dan
+  hapus per item; di layar sempit jadi drawer dengan overlay. Tombol ☰ melipat/membukanya
+- Tool call muncul sebagai chip inline; reasoning muncul sebagai blok yang bisa dilipat; tiap
+  pesan punya tombol **Salin**; gambar di transkrip bisa diklik (lightbox)
+- **Lampiran**: 📎 / Ctrl+V / drag & drop — gambar dan dokumen (docx, pdf, xlsx, pptx, txt, md,
+  csv, json, log), maks 25 MB per berkas. Lihat **Lampiran: gambar & dokumen**
 - Tombol **Riwayat** membuka daftar sesi (semua sumber); **Lanjutkan chat** di banner
   menjadikan sesi terpilih sebagai percakapan aktif — pesan baru masuk ke sesi yang sama
 - Navigasi **Chat · Papan · Workspace** di header semua halaman: **Chat** = `/` (halaman ini),
   **Papan** = `/agents` (pemantau agent), **Workspace** = `/workspace` (kantor virtual realtime)
-- Tombol **Keluar** (kanan header) mengakhiri sesi; tombol di sebelahnya menampilkan user aktif
+- Tombol **Keluar** (kiri bawah sidebar) mengakhiri sesi; nama user aktif tampil di sebelahnya
 - Tombol **⚡ Auto** adalah saklar cepat tanpa konfirmasi; **⚙ Setelan** membuka pilihan lengkap (lihat **Auto approve**)
 
-## Upload gambar
+## Lampiran: gambar & dokumen
 
-Di halaman chat kamu bisa melampirkan gambar ke pesan sebelum dikirim ke Hermes:
+Tombol **📎** di composer, **Ctrl+V** (tempel gambar dari clipboard), atau **drag & drop** ke
+jendela. Setelah terunggah, chip pratinjau muncul di atas kotak tulis; tekan **×** untuk
+membatalkan. Lampiran dikirim ke **server ini**, bukan langsung ke API server Hermes — endpoint
+`/v1/runs` hanya menerima part teks dan `image_url` (*"uploaded files and document inputs are not
+supported on this endpoint"*). Jadi server menyimpan file, mengekstrak teksnya, lalu UI menyusun
+prompt teks.
 
-- **📎** di composer — pilih satu atau beberapa berkas gambar
-- **Ctrl+V** — tempel screenshot atau gambar dari clipboard (selama tidak sedang mode riwayat)
-- **Drag & drop** ke area percakapan (`#main`) — lepas berkas gambar di sana
-
-Setelah diunggah, pratinjau kecil (chip) muncul di atas kotak tulis; tekan **×** untuk membatalkan lampiran.
-Saat **Kirim**, gambar tidak dikirim sebagai multipart ke gateway — yang dikirim ke `POST /v1/runs` adalah teks user plus penanda
-`[Image attached at: /path/absolut/gambar.jpg]` (satu baris per gambar). Hermes mengubah penanda itu menjadi bagian
-gambar native untuk model vision. Di gelembung chat yang kamu lihat, hanya teks dan thumbnail; penanda mentah tidak ditampilkan.
-
-Riwayat sesi (`Riwayat` → buka sesi) mem-parsing penanda yang sama dari `content` pesan user, menampilkan thumbnail lewat
-`GET /api/image?path=…` kalau path-nya di bawah cache yang diizinkan.
+| Jenis | Ekstensi | Perlakuan |
+|---|---|---|
+| Gambar | `png jpg jpeg gif webp bmp` | divalidasi dari **magic bytes** (bukan ekstensi), thumbnail + lightbox di UI, path absolut + penanda `[Image attached at: /path]` dikirim ke agent; UI juga menambahkan instruksi memakai tool `vision_analyze` sebagai jalur cadangan |
+| Office | `docx xlsx pptx` | teks diekstrak dengan `zipfile` + `xml.etree` (stdlib) |
+| PDF | `pdf` | `pdftotext -layout` kalau tersedia; kalau tidak, fallback zlib + regex stream |
+| Teks | `txt md csv json log` | dibaca UTF-8 dengan `errors=replace` |
 
 **Batasan:**
 
 | Batas | Nilai |
 |---|---|
-| Gambar per pesan | maks **4** |
-| Ukuran per berkas | maks **12 MB** |
-| Format | **JPEG, PNG, GIF, WebP** (dicek magic bytes, bukan ekstensi) |
-| Penyimpanan | `/root/.hermes/cache/webchat-images/<YYYYMMDD>/` (mode `600`); berkas >**14 hari** dibersihkan otomatis (best-effort) |
-| Gambar dari surface lain | Hanya pratinjau penuh kalau path di bawah `/root/.hermes/cache/webchat-images/` atau `/root/.hermes/cache/images/`; path lain (mis. Telegram) hanya menampilkan nama berkas |
+| Ukuran per berkas | maks **25 MB** (`WEBCHAT_MAX_UPLOAD_MB`) |
+| Gambar per pesan | maks **4** (ditegakkan di UI) |
+| Panjang teks diekstrak | 60.000 karakter (`WEBCHAT_MAX_TEXT_CHARS`), respons menandai `truncated` |
+| Format gambar | JPEG, PNG, GIF, WebP, BMP — dicek dari isi berkas |
+| Penyimpanan | `uploads/<YYYY-MM-DD>/<uuid8>_<nama-aman>` (folder `0700`, berkas `0600`) |
 
-Endpoint lokal (wajib sesi + same-origin, bukan proxy): `POST /api/upload`, `GET /api/image?path=<absolut>`.
+Penanda `[Image attached at: …]` tetap ditulis ke teks pesan supaya transkrip lama maupun baru
+menampilkan thumbnail saat dibuka lewat **Riwayat**; placeholder `[screenshot]` dibuang dari
+tampilan.
+
+### Cara kerja ekstraksi docx
+
+1. `word/document.xml` dibaca dari zip (tanpa python-docx).
+2. Paragraf `w:p` menjadi satu baris; `w:t` teksnya, `w:tab` → tab, `w:br`/`w:cr` → newline.
+3. Tabel `w:tbl`: setiap baris `w:tr` menjadi satu baris teks, sel `w:tc` digabung dengan tab —
+   hasilnya siap ditempel ke markdown/TSV. Urutan paragraf dan tabel dipertahankan.
+4. Teks dipotong 60.000 karakter; `chars` selalu berisi jumlah karakter asli, `note` menjelaskan
+   kalau ekstraksi gagal.
+
+`xlsx` membaca `xl/sharedStrings.xml` + `xl/worksheets/sheet*.xml` (nama sheet ikut), `pptx`
+membaca `ppt/slides/slide*.xml` per slide. Semuanya *best effort*: file rusak tidak membuat server
+crash.
+
+### Cara teks dikirim ke agent
+
+```
+[Lampiran dari pengguna]
+1. laporan.docx (application/vnd...wordprocessingml.document) — 1.1 KB, path: /root/.hermes/webchat/uploads/2026-10-24/03e5cd8e_laporan.docx
+2. foto.png (image/png) — 73 B, path: /root/.hermes/webchat/uploads/2026-10-24/9ff24fb6_foto.png
+
+[Image attached at: /root/.hermes/webchat/uploads/2026-10-24/9ff24fb6_foto.png]
+Catatan gambar: … panggil tool vision_analyze dengan image_url berisi path absolut gambar tersebut …
+
+===== ISI laporan.docx =====
+Laporan Proyek Merapi 2026
+Total anggaran tahun ini adalah Rp 1.250.000.000 ...
+===== AKHIR laporan.docx =====
+```
+
+### Endpoint
+
+`POST /api/upload` — wajib sesi + pemeriksaan `Origin`/`Referer`. Body `multipart/form-data`,
+satu field bernama `file` (body mentah `image/*` juga masih diterima untuk kompatibilitas).
+
+```bash
+curl -b jar -X POST http://127.0.0.1:8650/api/upload -F file=@laporan.docx
+```
+
+| Status | Arti |
+|---|---|
+| `200` | `{id, name, mime, size, bytes, path, url, kind, preview, text, truncated, chars, note, ok}` |
+| `400` | boundary/body tidak valid, atau file kosong |
+| `401` | belum login |
+| `403` | `Origin`/`Referer` beda host |
+| `413` | lebih dari 25 MB |
+| `415` | ekstensi/isi berkas tidak didukung |
+
+`kind` = `"image"` atau `"text"`. `path` absolut di server (dipakai agent), `url` =
+`/api/uploads/<id>`, `preview` data URL hanya untuk gambar ≤ 2 MB.
+
+`GET /api/uploads/<id>` — menyajikan lampiran (thumbnail setelah reload). Wajib sesi; `id` 8 hex;
+path kanonik diverifikasi di dalam `uploads/`; `nosniff` + `Content-Security-Policy: sandbox`.
+
+`GET /api/image?path=<absolut>` — endpoint lama, tetap hidup untuk transkrip lama. Path hanya
+boleh di bawah `/root/.hermes/cache/webchat-images/`, `/root/.hermes/cache/images/`, atau
+`uploads/` webchat ini. Cache gambar lama (`/root/.hermes/cache/webchat-images/`) dibersihkan
+otomatis setelah 14 hari; `uploads/` tidak di-prune otomatis (`rm -rf uploads/2026-*`).
+
+### Keamanan
+
+- Nama file disanitasi: basename, NFKD → ASCII, karakter aneh → `_`.
+  `../../etc/passwd.docx` tersimpan sebagai `passwd.docx`.
+- File tidak pernah dieksekusi — hanya dibaca sebagai teks atau disajikan sebagai gambar/PDF.
+- `uploads/` ada di `.gitignore`; isi dokumen tidak disimpan di localStorage browser (hanya
+  metadata chip: id, nama, ukuran, jumlah karakter).
 
 ## Login
 
@@ -419,11 +491,12 @@ yang bisa menyetujui permintaan itu.
 
 | File | Isi |
 |---|---|
-| `server.py` | Server + reverse proxy + login (stdlib Python saja, tanpa dependensi) + endpoint `/api/agents/*` |
-| `static/index.html` | Seluruh UI chat (HTML + CSS + JS, tanpa CDN) |
+| `server.py` | Server + reverse proxy + login + unggah/ekstraksi lampiran (stdlib Python saja) + endpoint `/api/agents/*` |
+| `static/index.html` | Seluruh UI chat (HTML + CSS + JS, tanpa CDN): sidebar percakapan, lampiran, lightbox |
 | `static/agents.html` | Halaman **Pemantau Agent** (`/agents`) — papan kanban, mobile-first |
 | `static/workspace.html` | Halaman **Workspace** (`/workspace`) — kantor virtual realtime (sprite SVG + animasi CSS) |
 | `static/login.html` | Halaman login |
+| `uploads/` | Lampiran terunggah (gambar + dokumen), dibuat otomatis, `0700`, **tidak** di-commit |
 | `auth.json` | Username + hash PBKDF2 + signing secret (mode `600`, jangan di-commit) |
 | `~/.config/systemd/user/hermes-webchat.service` | Unit systemd user (enabled, linger aktif) |
 

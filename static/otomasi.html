@@ -3,6 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Hermes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Otomasi — Hermes</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f1115'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%237aa2f7'/%3E%3C/svg%3E">
 <style>
@@ -188,9 +194,49 @@
     max-width:92vw; text-align:center;
   }
   .toast.show{opacity:1}
+  /* ---------- mobile (<900px) ---------- */
+  @media (max-width:899.98px){
+    .top{padding:calc(8px + var(--safe-t)) 10px 8px; gap:6px}
+    .top h1{font-size:14px}
+    .icon{width:44px; height:44px}
+    /* kepala lengket ganda (head + tabs) bikin tinggi tak terduga di HP:
+       tab dibuat mengalir biasa dan bisa digeser horizontal. */
+    .tabs{position:static; padding:0 10px 8px; gap:6px; flex-wrap:nowrap}
+    .tabs button{min-height:44px; flex:0 0 auto; padding:9px 13px}
+    .sticky-search{position:static; top:auto}
+    main{padding:10px 10px 14px}
+    .sec-head{gap:8px}
+    .sec-head .btn.primary{flex:1 1 auto; min-height:46px}
+    /* kartu job: satu kolom penuh, aksi jadi tombol lebar yang nyaman */
+    .card{padding:12px 11px}
+    .card-top b{font-size:14.5px; display:block; flex:1 1 100%}
+    .card-top .chip{flex:0 0 auto}
+    .kv{grid-template-columns:1fr; gap:8px}
+    .acts{gap:8px}
+    .acts .btn{flex:1 1 calc(50% - 8px); min-height:44px; justify-content:center}
+    .form-acts{gap:8px}
+    .form-acts .btn{flex:1 1 auto; min-height:48px; justify-content:center}
+    .presets button{min-height:44px; font-size:12px}
+    .cards{grid-template-columns:1fr}
+    /* modal → bottom sheet */
+    .modal{
+      left: 0; right: 0; bottom: 0; top: auto; transform: none;
+      width: 100%; max-width: none; max-height: 88dvh; overflow-y: auto;
+      border-radius: 18px 18px 0 0; border-bottom: none;
+      padding: 18px 16px calc(20px + var(--safe-b));
+    }
+    .modal.open{ animation: sheet-up .22s cubic-bezier(.22,.9,.24,1) both; }
+    .modal .acts .btn{ flex: 1 1 0; min-height: 46px; justify-content: center; }
+    .toast{ bottom: calc(var(--tabbar-h) + 18px + var(--safe-b)); }
+    table.cap{ font-size: 12px; }
+    table.cap td{ padding: 7px 6px; }
+  }
 </style>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="/mobile.css">
 </head>
-<body>
+<body class="has-tabbar">
 
 <header class="head">
   <div class="top">
@@ -312,6 +358,28 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
+
+<!-- Bottom tab bar (hanya <900px). -->
+<nav class="tabbar" id="tabbar" aria-label="Navigasi utama">
+  <a href="/">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H7l-4 3v-6.2A8.5 8.5 0 0 1 12.5 3h0A8.5 8.5 0 0 1 21 11.5z"/></svg>
+    Chat
+  </a>
+  <a href="/agents">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17.5" y="4" width="3.5" height="13" rx="1"/></svg>
+    Kanban
+  </a>
+  <a href="/workspace">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></svg>
+    Workspace
+  </a>
+  <a href="/otomasi" aria-current="page">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.3V12l3.1 1.9"/></svg>
+    Otomasi
+  </a>
+</nav>
+
+<script src="/mobile.js"></script>
 
 <script>
 (() => {

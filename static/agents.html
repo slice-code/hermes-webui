@@ -3,6 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Hermes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Kanban Agen Worker — Hermes</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f1115'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%237aa2f7'/%3E%3C/svg%3E">
 <style>
@@ -429,9 +435,54 @@
     .acts.primary .btn.big{flex:1 1 100%}
     #toast{bottom:10px; font-size:12px}
   }
+  /* ---------- mobile (<900px) ---------- */
+  @media (max-width:899.98px){
+    .top{padding:calc(8px + var(--safe-t)) 10px 8px; gap:6px}
+    .top h1{font-size:14px; min-width:0; overflow:hidden; text-overflow:ellipsis}
+    /* aksi utama pindah ke baris kedua supaya judul tidak terhimpit */
+    .top .btn.primary{padding:8px 12px; min-height:44px}
+    .icon{width:44px; height:44px}
+    .bar{padding:7px 10px; gap:6px}
+    .bar .lb{display:none}
+    .btn.sm{min-height:44px; padding:8px 11px; font-size:12.5px}
+    .tools{padding:7px 10px 8px; gap:6px}
+    .search{flex:1 1 100%}
+    .search input{min-height:44px; font-size:16px}
+    .tools select{min-height:44px; flex:1 1 132px; max-width:none}
+    .tools .tgl{min-height:44px}
+    .chips{padding:8px 10px 6px; flex-wrap:nowrap; overflow-x:auto; overscroll-behavior-x:contain}
+    .chips .chip{flex:0 0 auto; min-height:44px; display:inline-flex; align-items:center}
+    main{padding:8px 10px 10px}
+    .colBody{max-height:calc(100dvh - 300px - var(--tabbar-h))}
+    .card{padding:11px 10px 10px}
+    /* drag-and-drop HTML5 tidak jalan di layar sentuh: grip jadi penanda visual,
+       jalur sentuh sebenarnya adalah menu ⋯ → "Pindahkan ke…". */
+    .grip{opacity:.55}
+    .cbtn{width:44px; height:44px; font-size:17px}
+    .menu{width:calc(100vw - 24px); max-height:min(58dvh,420px)}
+    .menuItem{padding:12px 10px; min-height:48px}
+    .colPick input{width:22px; height:22px}
+    .shBody .btn, .shBody select, .shBody input, .shBody textarea{min-height:44px}
+    .shTop .btn{padding:10px 10px}
+    .acts.primary{position:sticky; bottom:0; background:var(--bg2); padding-top:8px}
+    /* dialog ask() → bottom sheet penuh */
+    .modalWrap{align-items:flex-end; padding:0}
+    .modal{max-width:none; max-height:92dvh; border-radius:18px 18px 0 0; border-bottom:none;
+      padding:18px 16px calc(16px + var(--safe-b)); animation:sheet-up .22s cubic-bezier(.22,.9,.24,1) both}
+    .modalFoot{position:sticky; bottom:0; background:var(--bg2); padding:10px 0 2px; margin-top:12px}
+    .modalFoot .btn{flex:1 1 0; min-height:46px; justify-content:center}
+    .colPick label{min-height:44px}
+  }
+  @media (max-width:419.98px){
+    .top h1{font-size:13.5px}
+    .top .btn.primary{font-size:12.5px; padding:8px 10px}
+  }
 </style>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="/mobile.css">
 </head>
-<body>
+<body class="has-tabbar">
 <div id="papan">
   <div class="head">
     <header class="top">
@@ -508,6 +559,28 @@
   <span id="toastText"></span>
   <button class="tact" id="toastAct" type="button" hidden></button>
 </div>
+
+<!-- Bottom tab bar (hanya <900px). -->
+<nav class="tabbar" id="tabbar" aria-label="Navigasi utama">
+  <a href="/">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H7l-4 3v-6.2A8.5 8.5 0 0 1 12.5 3h0A8.5 8.5 0 0 1 21 11.5z"/></svg>
+    Chat
+  </a>
+  <a href="/agents" aria-current="page">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17.5" y="4" width="3.5" height="13" rx="1"/></svg>
+    Kanban
+  </a>
+  <a href="/workspace">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></svg>
+    Workspace
+  </a>
+  <a href="/otomasi">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.3V12l3.1 1.9"/></svg>
+    Otomasi
+  </a>
+</nav>
+
+<script src="/mobile.js"></script>
 
 <script>
 (() => {

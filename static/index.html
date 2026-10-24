@@ -3,6 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Hermes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Hermes Chat</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f1115'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%237aa2f7'/%3E%3C/svg%3E">
 <style>
@@ -519,9 +525,64 @@
     .topbar #history span.lbl{display:none}
   }
   @media(prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+
+  /* ---------- mobile (<900px): composer & bubble ---------- */
+  @media(max-width:899.98px){
+    .topbar{padding:calc(8px + var(--safe-t)) 10px 8px; gap:6px; flex-wrap:nowrap}
+    .topbar h1{font-size:15px}
+    /* Satu baris saja: model jadi satu-satunya elemen yang boleh menyusut
+       (teksnya elipsis) supaya topbar tidak pernah melebar keluar layar. */
+    .topbar .spacer{display:none}
+    button.model{flex:1 1 auto; min-width:0; max-width:none; min-height:44px; margin-right:2px}
+    button.model span{min-width:0}
+    .topbar #auto{min-height:44px; flex:none}
+    /* composer menempel tepat di atas tab bar (body sudah diberi padding) */
+    .composer-wrap{padding:6px 10px 8px}
+    .composer{border-radius:20px; padding:6px 6px 4px}
+    .crow{gap:4px}
+    .crow .clip{width:44px; height:44px}
+    .sendbtn, .stopbtn{width:46px; height:46px}
+    .sendbtn svg{width:20px; height:20px}
+    textarea{min-height:44px; padding:10px 6px; max-height:34dvh}
+    .hint{margin-top:4px; font-size:10.5px; padding:0 6px}
+    .hint #sid, .hint #hintAttach{display:none}
+    /* bubble tidak melebar penuh, jarak lega */
+    .wrap{padding:14px 12px 10px; gap:10px}
+    .msg{padding:4px 0; gap:8px}
+    .msg .who{width:26px; height:26px; font-size:11px}
+    .msg.user .bubble{max-width:86%}
+    .msg.user .bubble .text{padding:10px 13px; border-radius:15px 15px 4px 15px}
+    .msg.agent .bubble{max-width:100%}
+    /* aksi per pesan selalu terlihat (tidak ada hover di HP) & tidak menutupi teks */
+    .acts{opacity:.9; margin-top:6px; gap:2px; flex-wrap:wrap}
+    .acts button{min-height:44px; min-width:44px; font-size:12px; padding:6px 10px;
+      border-color:var(--line); background:var(--bg2); justify-content:center}
+    /* tombol hapus percakapan di sidebar selalu tampak */
+    .conv .cx{opacity:.75; min-width:44px; min-height:44px}
+    .conv{padding:10px 8px; min-height:52px}
+    a.sidenav{min-height:44px}
+    .side-search input{min-height:44px}
+    .empty{padding:10vh 0 0; font-size:14px}
+    .empty h2{font-size:20px}
+    .to-bottom{width:44px; height:44px; bottom:12px}
+    .lightbox img{max-height:78dvh}
+    .lightbox .lbclose{width:44px; height:44px; min-width:44px; font-size:24px}
+  }
+  @media(max-width:419.98px){
+    .topbar h1{display:none}
+    button.model{max-width:none}
+    button.model b{display:none}
+    .msg .who{display:none}
+    .msg.user .bubble{max-width:92%}
+    .composer-wrap{padding:5px 8px 7px}
+    .panel > header{padding:10px}
+  }
 </style>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="/mobile.css">
 </head>
-<body>
+<body class="has-tabbar chat-app">
 
 <aside class="side" id="side">
   <div class="side-top">
@@ -634,6 +695,26 @@
 
 <div class="scrim" id="scrim"></div>
 
+<!-- Bottom tab bar (hanya <900px; nav atas dipakai di desktop). -->
+<nav class="tabbar" id="tabbar" aria-label="Navigasi utama">
+  <a href="/" aria-current="page">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H7l-4 3v-6.2A8.5 8.5 0 0 1 12.5 3h0A8.5 8.5 0 0 1 21 11.5z"/></svg>
+    Chat
+  </a>
+  <a href="/agents">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17.5" y="4" width="3.5" height="13" rx="1"/></svg>
+    Kanban
+  </a>
+  <a href="/workspace">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></svg>
+    Workspace
+  </a>
+  <a href="/otomasi">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.3V12l3.1 1.9"/></svg>
+    Otomasi
+  </a>
+</nav>
+
 <aside class="panel left" id="histPanel">
   <header><h1>Riwayat sesi</h1><span class="spacer"></span>
     <button id="histNew" title="Buat sesi Hermes baru (POST /api/sessions)">+ Sesi</button>
@@ -653,7 +734,7 @@
   <div class="body" id="modelBody"></div>
 </aside>
 
-<div class="modal" id="modal">
+<div class="modal sheet-modal" id="modal">
   <div class="modal-card">
     <h3 id="modalTitle">Konfirmasi</h3>
     <p id="modalText"></p>
@@ -669,6 +750,8 @@
   <button class="lbclose" id="lbClose" title="Tutup">✕</button>
   <img id="lightboxImg" alt="">
 </div>
+
+<script src="/mobile.js"></script>
 
 <script>
 (() => {

@@ -183,6 +183,18 @@
   .text blockquote{margin:.7em 0;padding:.15em .95em;border-left:3px solid var(--line2);color:var(--dim)}
   .text img.mimg{max-width:min(100%,420px); border-radius:10px; border:1px solid var(--line);
     cursor:zoom-in; display:block; margin:.5em 0}
+  /* MEDIA:<path> dari agen — gambar atau chip berkas */
+  .text figure.media{margin:.6em 0}
+  .text figure.media img{max-width:min(100%,440px); border-radius:10px; border:1px solid var(--line);
+    display:block; cursor:zoom-in}
+  .text figure.media figcaption{font-size:11.5px; color:var(--dim); margin-top:4px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .mediafile{display:flex; gap:9px; align-items:center; border:1px solid var(--line);
+    background:var(--bg2); border-radius:10px; padding:8px 10px; margin:.5em 0; max-width:520px}
+  .mediafile .mwrap{display:flex; flex-direction:column; min-width:0}
+  .mediafile .mname{font-size:13px; color:var(--fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .mediafile .mpath{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--dim);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 
   /* tabel laporan */
   .text .tblwrap{margin:.7em 0; border:1px solid var(--line); border-radius:10px; overflow-x:auto; background:#14171b}
@@ -871,7 +883,15 @@
   }
 
   function md(src) {
-    const parts = String(src).split(/```/);
+    // `MEDIA:/path` adalah cara agen Hermes mengirim berkas keluar (screenshot,
+    // gambar hasil tool, dsb). Marker disembunyikan dulu sebagai token kontrol
+    // supaya lolos escaping, lalu diganti HTML di akhir pipeline.
+    const media = [];
+    const text = String(src).replace(/MEDIA:(\/[^\s<>"'`]+)/g, (_, p) => {
+      media.push(p.replace(/[.,;:)\]]+$/, ""));
+      return "\u0001M" + (media.length - 1) + "\u0001";
+    });
+    const parts = text.split(/```/);
     let out = "";
     parts.forEach((part, i) => {
       if (i % 2 === 1) {                                  // blok kode
@@ -950,7 +970,22 @@
       }
       flushP(); closeLists();
     });
-    return out;
+    return out.replace(/\u0001M(\d+)\u0001/g, (_, i) => mediaCard(media[+i]));
+  }
+
+  // Kartu untuk `MEDIA:<path>`: gambar disajikan lewat /api/image (butuh sesi),
+  // berkas non-gambar tidak bisa disajikan jadi hanya ditampilkan sebagai chip.
+  const MEDIA_IMG_RE = /\.(png|jpe?g|gif|webp|bmp)$/i;
+  function mediaCard(path) {
+    const name = String(path || "").split("/").pop() || "berkas";
+    if (MEDIA_IMG_RE.test(name)) {
+      return `<figure class="media"><img data-media="1" src="/api/image?path=` +
+        encodeURIComponent(path) + `" alt="${esc(name)}" loading="lazy">` +
+        `<figcaption>${esc(name)}</figcaption></figure>`;
+    }
+    return `<div class="mediafile"><span class="aico">` + esc(badgeFor(name)) + `</span>` +
+      `<span class="mwrap"><span class="mname">${esc(name)}</span>` +
+      `<span class="mpath">${esc(path)}</span></span></div>`;
   }
 
   // ---------------- render pesan ----------------
@@ -2091,11 +2126,29 @@
       setTimeout(() => { btn.textContent = "Salin"; }, 1500);
       return;
     }
-    const img = ev.target.closest("img.mimg, .att.img img");
+    const img = ev.target.closest("img.mimg, .att.img img, figure.media img");
     if (img) { openLightbox(img.src, img.alt); return; }
     const row = ev.target.closest(".tree li.dir > .row");
     if (row) row.parentElement.classList.toggle("closed");
   });
+
+  // Gambar MEDIA bisa ditolak /api/image (403: path di luar folder yang
+  // diizinkan, atau 404: berkas sudah dihapus). Event `error` tidak bubbling,
+  // jadi ditangkap di fase capture supaya chip pengganti selalu muncul.
+  wrap.addEventListener("error", (ev) => {
+    const img = ev.target;
+    if (!(img instanceof HTMLImageElement) || !img.dataset.media) return;
+    const src = img.getAttribute("src") || "";
+    let path = "";
+    try { path = new URL(src, location.origin).searchParams.get("path") || ""; } catch { path = src; }
+    const name = path.split("/").pop() || "berkas";
+    const chip = document.createElement("div");
+    chip.className = "mediafile";
+    chip.innerHTML = `<span class="aico">${esc(badgeFor(name))}</span>` +
+      `<span class="mwrap"><span class="mname">${esc(name)}</span>` +
+      `<span class="mpath">${esc(path)} · tidak bisa disajikan</span></span>`;
+    (img.closest("figure.media") || img).replaceWith(chip);
+  }, true);
 
   // ---------------- misc ----------------
   function autoGrow() {

@@ -56,6 +56,9 @@ _TYPES = {
     ".js": "application/javascript; charset=utf-8",
     ".svg": "image/svg+xml",
     ".ico": "image/x-icon",
+    ".png": "image/png",
+    # Web App Manifest wajib MIME ini, kalau tidak Chrome menolak install PWA.
+    ".webmanifest": "application/manifest+json",
 }
 
 
@@ -105,7 +108,16 @@ _revoked_lock = threading.Lock()
 _revoked: dict = {}  # nonce sesi yang dicabut (logout) -> exp token
 
 # Route yang boleh diakses tanpa login. Semua sisanya wajib sesi.
-PUBLIC_PATHS = {"/login", "/healthz", "/favicon.ico"}
+PUBLIC_PATHS = {"/login", "/healthz", "/favicon.ico", "/manifest.webmanifest"} | {
+    "/sw.js", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png",
+    "/mobile.css", "/mobile.js",
+}
+
+# Aset statis yang disajikan apa adanya lewat `_serve_static` TANPA sesi.
+# Daftar tertutup (bukan prefix `/static/`): hanya berkas shell/PWA di atas,
+# yang isinya bisa dibaca siapa pun tanpa membocorkan apa pun.
+PUBLIC_ASSETS = {"/sw.js", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png",
+                 "/mobile.css", "/mobile.js"}
 
 # Upload gambar webchat — disimpan di cache lokal, bukan di-proxy ke gateway.
 # Root lama dipertahankan supaya transkrip lama (`/api/image?path=`) tetap tampil.
@@ -2066,6 +2078,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
+        # --- Aset statis PWA / shell mobile (publik, tanpa rahasia) ----------
+        # Hanya daftar tertutup ini yang dibolehkan tanpa sesi: manifest, ikon,
+        # service worker, dan dua berkas CSS/JS shell. /api/* dan /v1/* TIDAK
+        # ikut dilonggarkan — keduanya tetap wajib sesi di bawah.
+        if path in PUBLIC_ASSETS:
+            return self._serve_static(path[1:])
+        if path == "/manifest.webmanifest":
+            # Manifest boleh di-cache sebentar oleh browser; isinya statis.
+            return self._serve_static(path[1:], cache="no-cache")
         if not self._require_auth():
             return
         if path in ("/", "/index.html"):
@@ -2528,7 +2549,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- static ----------------------------------------------------------
 
-    def _serve_static(self, name: str) -> None:
+    def _serve_static(self, name: str, cache: str = "no-store") -> None:
         target = (HERE / "static" / posixpath.basename(name)).resolve()
         try:
             data = target.read_bytes()
@@ -2537,7 +2558,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", _TYPES.get(target.suffix, "application/octet-stream"))
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache)
+        # Service worker boleh menggantikan dirinya sendiri di scope mana pun.
+        if target.name == "sw.js":
+            self.send_header("Service-Worker-Allowed", "/")
         self.end_headers()
         self.wfile.write(data)
 

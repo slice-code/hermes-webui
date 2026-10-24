@@ -1,0 +1,185 @@
+/* ==========================================================================
+   Hermes Web — lapisan "aplikasi mobile" bersama.
+   Dipakai oleh index.html, agents.html, workspace.html, otomasi.html, login.html.
+
+   Aturan mainnya: DESKTOP TIDAK BOLEH BERUBAH. Hampir semua aturan hidup di
+   dalam @media (max-width:899.98px); di luar itu hanya reset kecil (tap
+   highlight, overscroll, transisi) yang tidak menggeser satu piksel pun.
+
+   Konsep kunci:
+   - `--tabbar-h` = tinggi bottom tab bar (58px di mobile, 0px di desktop).
+     Body diberi padding-bottom sebesar itu, jadi composer/kontak terakhir
+     selalu berada DI ATAS tab bar, bukan tertutup olehnya.
+   - `--app-vh` diisi mobile.js dari visualViewport (px). Di chat, body memakai
+     `var(--app-vh, 100dvh)` supaya tinggi mengikuti keyboard & URL bar.
+   - `body.kb-mode` = keyboard terbuka → tab bar turun keluar layar dan padding
+     bawah dinolkan, sehingga composer menempel tepat di atas keyboard.
+   ========================================================================== */
+
+:root{
+  --tabbar-h: 0px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --tap: rgba(122, 162, 247, .16);
+}
+
+/* ---------- reset kecil (berlaku juga di desktop, tanpa efek visual) ---------- */
+html{
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+/* Panel yang menggulir tidak boleh "merembet" ke body di iOS/Android. */
+.thread, .panel .body, .sheet .shBody, .side-list, .cols, .chips, #cronList{
+  overscroll-behavior: contain;
+}
+
+/* Kunci scroll body saat sheet terbuka (JS menambah kelas ini). */
+html.lock, html.lock body{ overflow: hidden !important; }
+
+/* Transisi masuk halaman — ringan, tidak menggeser layout (opacity saja). */
+@keyframes app-in{ from{opacity:0} to{opacity:1} }
+.app-fade{ animation: app-in .18s ease-out both; }
+
+/* ======================================================================
+   BOTTOM TAB BAR — hanya < 900px
+   ====================================================================== */
+.tabbar{ display: none; }
+
+@media (max-width: 899.98px){
+  :root{ --tabbar-h: 58px; }
+
+  /* Navigasi atas diganti tab bar: jangan dobel. */
+  nav.pages, .pages{ display: none !important; }
+
+  .tabbar{
+    display: flex;
+    position: fixed; left: 0; right: 0; bottom: 0;
+    z-index: 18;
+    background: rgba(17, 19, 22, .97);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    padding-bottom: var(--safe-b);
+    transform: translateY(0);
+    transition: transform .18s ease, opacity .16s ease;
+  }
+  .tabbar a{
+    flex: 1 1 0; min-width: 0; min-height: 56px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; padding: 7px 2px 6px;
+    color: #8b93a1; text-decoration: none; font-size: 11px; line-height: 1;
+    position: relative; letter-spacing: .01em;
+    transition: color .15s ease;
+  }
+  .tabbar a svg{ width: 22px; height: 22px; display: block; }
+  .tabbar a:active{ background: var(--tap); color: #fff; }
+  .tabbar a[aria-current="page"]{ color: #7aa2f7; font-weight: 600; }
+  /* indikator tab aktif */
+  .tabbar a[aria-current="page"]::before{
+    content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 28px; height: 2.5px; border-radius: 0 0 3px 3px; background: #7aa2f7;
+  }
+
+  /* Keyboard terbuka: tab bar keluar layar, composer turun menempel keyboard. */
+  body.kb-mode .tabbar{ transform: translateY(130%); opacity: 0; pointer-events: none; }
+  body.has-tabbar.kb-mode{ padding-bottom: 0 !important; }
+
+  /* ---------- kerangka app ---------- */
+  body.has-tabbar{ padding-bottom: calc(var(--tabbar-h) + var(--safe-b)); }
+  /* chat: tinggi mengikuti visualViewport (keyboard/URL bar), bukan 100vh */
+  body.chat-app{ height: var(--app-vh, 100dvh); }
+
+  /* ---------- target sentuh ≥ 44px ---------- */
+  button, .btn, .icon, .iconbtn, .cbtn, .cadd, .copy, .mini,
+  select, input[type="text"], input[type="search"], input[type="password"],
+  input[type="number"], textarea,
+  .sess .sacts button, .menuItem, .linkbtn, .closebtn,
+  details.roster > summary, .rrow{
+    min-height: 44px;
+  }
+  .icon, .iconbtn, .cbtn, .cadd{ min-width: 44px; }
+  /* Chip filter (kanban) & chip lampiran (chat) ikut membesar. Badge status
+     biasa (span.chip tanpa wadah .chips) TIDAK ikut — itu teks, bukan target. */
+  .chips .chip, .composer .chip{ min-height: 44px; }
+
+  /* Input 16px = tidak ada auto-zoom di iOS. */
+  input, textarea, select{ font-size: 16px !important; }
+
+  /* Umpan balik sentuh yang jelas (hover tidak ada di HP). */
+  button:active, .btn:active, .icon:active, .iconbtn:active,
+  a:active, .card:active, .sess:active, .rrow:active{ background-color: var(--tap); }
+  .tabbar a:active{ background-color: var(--tap); }
+
+  /* ==================================================================
+     PANEL SAMPING → BOTTOM SHEET LAYAR PENUH
+     (.panel dipakai index.html: Riwayat sesi, Setelan, Provider & model)
+     ================================================================== */
+  .panel, .panel.left{
+    position: fixed; top: auto; bottom: 0; left: 0; right: 0;
+    width: 100%; max-width: none; height: auto; max-height: 92dvh;
+    z-index: 44;
+    border: 1px solid var(--line, #262c37);
+    border-left: none; border-right: none; border-bottom: none;
+    border-radius: 18px 18px 0 0;
+    background: var(--bg2, #161a21);
+    box-shadow: 0 -18px 44px rgba(0, 0, 0, .55);
+    transform: translateY(101%);
+    transition: transform .24s cubic-bezier(.22, .9, .24, 1);
+    padding-bottom: var(--safe-b);
+    display: flex; flex-direction: column;
+  }
+  .panel.left{ transform: translateY(101%); }
+  .panel.open, .panel.left.open{ transform: translateY(0); }
+
+  /* Gagang geser (visual) di atas tiap sheet. */
+  .panel::before, .sheet::before{
+    content: ""; flex: none; width: 40px; height: 4px; border-radius: 999px;
+    background: #3d434d; margin: 8px auto 2px;
+  }
+
+  /* Sheet kanban/workspace (sudah bottom-sheet di desktop) dirapikan tingginya. */
+  .sheet{ max-height: 92dvh; width: 100%; max-width: none; border-radius: 18px 18px 0 0; }
+  .sheet .shBody{ padding-bottom: calc(26px + var(--safe-b)); }
+  .panel .body{ padding-bottom: calc(12px + var(--safe-b)); }
+
+  /* ---------- modal konfirmasi → sheet bawah ----------
+     Hanya modal bergaya overlay penuh (.sheet-modal, dipakai index.html).
+     Halaman lain punya `.modal` sendiri (dialog kecil) yang tidak disentuh. */
+  .modal.sheet-modal{ place-items: end center; padding: 0; }
+  .modal.sheet-modal.open .modal-card{ animation: sheet-up .22s cubic-bezier(.22, .9, .24, 1) both; }
+  .modal.sheet-modal .modal-card{
+    width: 100%; max-width: none; max-height: 90dvh; overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 18px 18px 0 0; border-bottom: none;
+    padding: 20px 16px calc(18px + var(--safe-b));
+    box-shadow: 0 -18px 44px rgba(0, 0, 0, .55);
+  }
+  .modal.sheet-modal .modal-btns{ position: sticky; bottom: 0; }
+  .modal.sheet-modal .modal-btns button{ flex: 1 1 0; min-height: 48px; font-size: 15px; }
+
+  /* ---------- toast di atas tab bar ---------- */
+  #toast{ bottom: calc(var(--tabbar-h) + 10px + var(--safe-b)) !important; }
+
+  /* ---------- sidebar chat (drawer) ---------- */
+  .side{ padding-bottom: var(--safe-b); }
+  .side-foot{ padding-bottom: calc(8px + var(--safe-b)); }
+
+  /* ---------- login ---------- */
+  body.login-page{
+    height: auto; min-height: 100dvh;
+    padding: calc(16px + var(--safe-t)) 16px calc(16px + var(--safe-b)) !important;
+    align-items: start; overflow-y: auto;
+  }
+  body.login-page .card{ margin-top: max(12px, 6dvh); }
+  body.login-page input{ min-height: 48px; font-size: 16px; }
+  body.login-page button[type="submit"]{ min-height: 50px; font-size: 15.5px; }
+}
+
+@keyframes sheet-up{ from{ transform: translateY(100%); } to{ transform: translateY(0); } }
+
+/* Desktop: tab bar tidak pernah muncul, navigasi atas yang berlaku. */
+@media (min-width: 900px){
+  .tabbar{ display: none !important; }
+  body.has-tabbar{ padding-bottom: 0; }
+}

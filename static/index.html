@@ -577,6 +577,14 @@
     .composer-wrap{padding:5px 8px 7px}
     .panel > header{padding:10px}
   }
+  /* Pita 900–1150px (tablet / jendela desktop sempit): nav atas sudah kembali
+     tapi topbar belum cukup lebar untuk satu baris. Biarkan membungkus dan
+     model menyusut, supaya tidak ada overflow horizontal. */
+  @media(min-width:900px) and (max-width:1149.98px){
+    .topbar{flex-wrap:wrap; row-gap:6px}
+    button.model{flex:1 1 140px; min-width:0; max-width:none}
+    .topTitle{max-width:min(30vw,300px)}
+  }
 </style>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icon-192.png">

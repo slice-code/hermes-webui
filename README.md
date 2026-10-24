@@ -814,6 +814,53 @@ rate limit yang sama dengan kanban (`WEBCHAT_MUTATE_LIMIT`, default 40/menit →
 Path gateway **tidak** dibuka borongan: hanya daftar di tabel ini yang punya rute; mis.
 `/api/secrets` dan `/v1/models` tetap `404`.
 
+## Tampilan mobile & PWA
+
+Halaman-halaman ini dipakai dari HP lewat `http://192.168.1.4:8650` (HTTP biasa, bukan
+HTTPS). Karena itu lapisan mobile dibuat tanpa asumsi secure context: kalau sebuah API
+tidak ada (`visualViewport`, `navigator.vibrate`, `serviceWorker`), halaman tetap jalan
+apa adanya.
+
+Semua aturan mobile ada di **satu berkas bersama** `static/mobile.css` + `static/mobile.js`
+yang dimuat kelima halaman (chat, kanban, workspace, otomasi, login). Aturan hidup di dalam
+`@media (max-width:899.98px)`, jadi desktop tidak berubah.
+
+| Bagian | Perilaku |
+|---|---|
+| **Bottom tab bar** | Muncul hanya < 900px: 4 tab (Chat · Kanban · Workspace · Otomasi) dengan ikon SVG + label, tinggi 56px + `padding-bottom: env(safe-area-inset-bottom)`, tab aktif ditandai warna aksen + garis indikator. Di ≥ 900px tab bar `display:none` dan `nav.pages` di header yang berlaku — tidak pernah dobel. Getaran 8 ms saat pindah tab kalau `navigator.vibrate` ada. |
+| **Composer di atas tab bar** | `body.has-tabbar` diberi `padding-bottom: calc(58px + safe-area)`, jadi composer (dan konten terakhir halaman lain) selalu berhenti di atas tab bar, bukan tertutup. |
+| **Mode keyboard** | `body.kb-mode` dipasang dari `focus`/`blur` field teks + `visualViewport` (`mobile.js`). Saat aktif: tab bar turun keluar layar (`translateY`, `opacity:0`, `pointer-events:none`) dan padding bawah jadi 0 → composer menempel tepat di keyboard. Autofokus saat halaman dimuat tidak dihitung sebagai keyboard (butuh gestur user dulu), kalau tidak tab bar langsung hilang begitu chat dibuka. |
+| **Tinggi layout** | Chat memakai `height: var(--app-vh, 100dvh)`; `--app-vh` diisi `visualViewport.height` supaya URL bar / keyboard tidak memotong layout. `viewport-fit=cover` + `theme-color #0f1115` ada di kelima halaman. |
+| **Bottom sheet** | Di < 900px panel Riwayat/Setelan/Provider (`index.html`), detail task kanban, detail agen workspace, dialog `ask()` kanban, dan modal Otomasi semuanya jadi sheet dari bawah: lebar penuh, `max-height: 92dvh`, sudut atas 18px, gagang geser visual, tutup lewat backdrop/Esc/tombol. `body` dikunci (`html.lock` + `position:fixed` di mobile) selama sheet terbuka, dan fokus dikembalikan ke tombol pemicu saat ditutup. |
+| **Target sentuh** | Tombol/ikon/chip/tab minimal 44×44 px; input minimal 44px tinggi dan `font-size:16px` (mencegah auto-zoom iOS). Fungsi yang dulu hanya muncul saat hover (grip kartu kanban, tombol hapus percakapan, aksi per pesan) selalu tampak di layar sentuh; drag-and-drop HTML5 tidak jalan di sentuh, jadi jalur pindah kartu adalah menu **⋯ → Pindahkan ke…**. |
+| **Detail kecil** | `-webkit-tap-highlight-color: transparent`, state `:active` yang jelas, `overscroll-behavior: contain` di panel yang menggulir, transisi masuk halaman hanya opacity (tidak ada layout shift). |
+
+### Manifest & service worker
+
+| Route | Isi | Sesi |
+|---|---|---|
+| `GET /manifest.webmanifest` | Web App Manifest (`application/manifest+json`): name, short_name, `start_url:/`, `display:standalone`, `theme_color`/`background_color #0f1115`, ikon 192 + 512 + satu `maskable` | publik |
+| `GET /icon-192.png`, `/icon-512.png`, `/icon-maskable-512.png` | Ikon PNG, digenerate `python3 tools/gen_icons.py` (stdlib: `zlib` + `struct`, tanpa Pillow) | publik |
+| `GET /sw.js` | Service worker minimal: `skipWaiting` + `clients.claim`, handler `fetch` yang **hanya meneruskan** ke jaringan | publik |
+| `GET /mobile.css`, `/mobile.js` | Shell mobile bersama | publik |
+
+Pengecualian auth di atas adalah daftar tertutup (`PUBLIC_ASSETS` di `server.py`) berisi
+aset statis tanpa rahasia. `/api/*` dan `/v1/*` **tidak** ikut dilonggarkan.
+
+`sw.js` sengaja tidak memakai penyimpanan cache sama sekali. UI ini mengendalikan agent:
+HTML/API dari cache basi akan menampilkan state palsu (task yang sudah selesai tampak
+jalan). Satu-satunya alasan SW ada adalah syarat installability "Add to Home Screen".
+
+**Catatan penting soal install PWA:** service worker hanya berjalan di secure context.
+Di `http://192.168.1.4:8650` browser bahkan tidak mengekspos `navigator.serviceWorker`
+(`window.isSecureContext === false`), sehingga pendaftaran gagal dan tombol "Install
+app"/"Add to Home Screen" bisa tidak muncul di Chrome Android. Halaman menangkap
+kegagalan itu diam-diam (`catch` kosong) dan tetap normal dipakai sebagai web biasa —
+tidak ada error di UI. Pintasan "Add to Home Screen" manual dari menu browser tetap bisa
+dibuat; ia hanya membuka tab biasa, bukan jendela standalone. Kalau install PWA benar-benar
+dibutuhkan, layani lewat HTTPS (mis. reverse proxy TLS di depannya) atau akses lewat
+`http://localhost`.
+
 ## File
 
 | File | Isi |
@@ -824,6 +871,11 @@ Path gateway **tidak** dibuka borongan: hanya daftar di tabel ini yang punya rut
 | `static/workspace.html` | Halaman **Workspace** (`/workspace`) — kantor virtual realtime (sprite SVG + animasi CSS) |
 | `static/otomasi.html` | Halaman **Otomasi** (`/otomasi`) — tab Cron (job terjadwal), Skills, Toolsets, Status sistem |
 | `static/login.html` | Halaman login |
+| `static/mobile.css` | Shell mobile bersama: bottom tab bar, bottom sheet, target sentuh 44px, safe-area, `dvh` (dimuat kelima halaman) |
+| `static/mobile.js` | Perilaku app-like: `body.kb-mode` (tab bar turun saat keyboard), kunci scroll + fokus sheet, getaran tab, registrasi SW secure-context saja |
+| `static/manifest.webmanifest` | Web App Manifest untuk "Add to Home Screen" |
+| `static/sw.js` | Service worker minimal — passthrough, tanpa cache |
+| `static/icon-192.png`, `icon-512.png`, `icon-maskable-512.png` | Ikon PWA, hasil `python3 tools/gen_icons.py` (stdlib) |
 | `uploads/` | Lampiran terunggah (gambar + dokumen), dibuat otomatis, `0700`, **tidak** di-commit |
 | `auth.json` | Username + hash PBKDF2 + signing secret (mode `600`, jangan di-commit) |
 | `~/.config/systemd/user/hermes-webchat.service` | Unit systemd user (enabled, linger aktif) |

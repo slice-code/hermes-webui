@@ -430,6 +430,68 @@
   .modal-card p{margin:0 0 16px; font-size:13.5px; color:var(--dim); line-height:1.55}
   .modal-btns{display:flex; gap:8px; justify-content:flex-end}
   .modal-btns button{padding:7px 14px}
+  #modalInput{
+    width:100%; margin:0 0 14px; padding:9px 11px; background:var(--bg3); color:var(--fg);
+    border:1px solid var(--line2); border-radius:9px; font:inherit; font-size:13.5px; outline:none;
+  }
+  #modalInput:focus{border-color:var(--acc)}
+
+  /* ---- steER: kotak arahan saat run berjalan (POST /v1/runs/{id}/steer) ---- */
+  .steerrow{
+    display:flex; align-items:center; gap:8px; padding:7px 10px 0;
+  }
+  .steerrow .steerico{color:var(--acc); font-size:14px; flex:none}
+  .steerrow input{
+    flex:1; min-width:0; padding:7px 10px; background:var(--bg3); color:var(--fg);
+    border:1px solid var(--line2); border-radius:8px; font:inherit; font-size:13px; outline:none;
+  }
+  .steerrow input:focus{border-color:var(--acc)}
+  .steerrow button{flex:none; font-size:12px; padding:6px 10px; border-radius:8px}
+  .steerchip{
+    display:flex; gap:7px; align-items:flex-start; font-size:12.5px; line-height:1.45;
+    border:1px solid #2f4a6b; background:#14202e; color:#c9dcf7; border-radius:9px;
+    padding:6px 9px; margin:0 0 7px;
+  }
+  .steerchip .sic{color:var(--acc); flex:none}
+  .steerchip.pending{border-style:dashed; opacity:.8}
+
+  /* ---- kartu klarifikasi (event clarify.request) ---- */
+  .clarify{margin:0 0 10px; border:1px solid #3c5a86; background:#131c28; border-radius:11px; padding:11px 13px}
+  .clarify.answered{border-color:var(--line); background:#171a1f; opacity:.85}
+  .clarify .clhead{font-size:12px; font-weight:700; letter-spacing:.03em; color:var(--acc);
+    text-transform:uppercase}
+  .clarify.answered .clhead{color:var(--dim)}
+  .clarify .clq{font-size:13.5px; margin:7px 0 9px; white-space:pre-wrap; word-break:break-word}
+  .clarify .clbtns{display:flex; gap:7px; flex-wrap:wrap}
+  .clarify .clbtns button{font-size:12.5px; padding:6px 11px}
+  .clarify .clfree{display:flex; gap:7px; margin-top:8px}
+  .clarify .clfree input{
+    flex:1; min-width:0; padding:7px 10px; background:var(--bg3); color:var(--fg);
+    border:1px solid var(--line2); border-radius:8px; font:inherit; font-size:12.5px; outline:none;
+  }
+  .clarify .clstate{margin-top:8px; font:12px ui-monospace,monospace; color:var(--dim)}
+  .clarify .clstate.ok{color:var(--ok)} .clarify .clstate.bad{color:var(--err)}
+
+  /* ---- tautan unduh artifact (proxy /v1/artifacts/download/{id}) ---- */
+  .artlink{
+    display:inline-flex; align-items:center; gap:6px; max-width:100%;
+    font:12px ui-monospace,monospace; color:var(--acc); text-decoration:none;
+    border:1px solid #2b3b57; background:#131c28; border-radius:8px; padding:3px 8px; margin:2px 0;
+  }
+  .artlink:hover{border-color:var(--acc); color:#fff}
+  .artlink b{font-weight:600}
+  .artlink .aid{color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
+  /* ---- aksi per sesi di panel Riwayat ---- */
+  .sess{position:relative}
+  .sess .sacts{display:flex; gap:4px; margin-top:6px; flex-wrap:wrap}
+  .sess .sacts button{
+    font-size:11px; padding:3px 7px; border-radius:7px; background:transparent;
+    border:1px solid var(--line2); color:var(--dim);
+  }
+  .sess .sacts button:hover{border-color:var(--acc); color:#fff}
+  .sess .sacts button.danger:hover{border-color:var(--err); color:var(--err)}
+  .sess.newrow{border-style:dashed}
 
   .lightbox{position:fixed; inset:0; z-index:50; background:#000e; display:none;
     place-items:center; padding:26px; cursor:zoom-out}
@@ -475,6 +537,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       Workspace
     </a>
+    <a class="sidenav" href="/otomasi" title="Otomasi — cron, skills, toolsets, status sistem">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/></svg>
+      Otomasi
+    </a>
     <div class="side-search"><input id="convSearch" type="search" placeholder="Cari percakapan" autocomplete="off"></div>
   </div>
   <div class="side-label">Percakapan</div>
@@ -502,6 +568,7 @@
       <a href="/" aria-current="page">Chat</a>
       <a href="/agents" title="Papan kanban agen worker — buat, atur, dan jalankan task">Kanban</a>
       <a href="/workspace" title="Kantor virtual — siapa yang sedang bekerja">Workspace</a>
+      <a href="/otomasi" title="Otomasi — cron, skills, toolsets, status sistem">Otomasi</a>
     </nav>
     <span class="spacer"></span>
     <button id="auto" title="Jawab permintaan konfirmasi otomatis">⚡ Auto</button>
@@ -535,6 +602,11 @@
   <footer class="composer-wrap">
     <div class="composer" id="composer">
       <div class="chips" id="chips"></div>
+      <div class="steerrow" id="steerRow" hidden>
+        <span class="steerico" aria-hidden="true">↪</span>
+        <input id="steerInput" type="text" placeholder="Arahan untuk run yang sedang berjalan…" autocomplete="off">
+        <button id="steerSend" title="Sisipkan arahan ini ke run yang berjalan">Arahan</button>
+      </div>
       <div class="crow">
         <button class="iconbtn clip" id="attach" title="Lampirkan file" aria-label="Lampirkan file">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M21 11.5l-8.8 8.8a5.5 5.5 0 01-7.8-7.8l8.5-8.5a3.7 3.7 0 015.2 5.2l-8.5 8.5a1.8 1.8 0 01-2.6-2.6l7.8-7.8"/></svg>
@@ -564,6 +636,7 @@
 
 <aside class="panel left" id="histPanel">
   <header><h1>Riwayat sesi</h1><span class="spacer"></span>
+    <button id="histNew" title="Buat sesi Hermes baru (POST /api/sessions)">+ Sesi</button>
     <button id="histRefresh">Muat ulang</button><button id="histClose" class="iconbtn">✕</button></header>
   <div class="body" id="histBody"></div>
 </aside>
@@ -576,6 +649,7 @@
 <aside class="panel" id="modelPanel">
   <header><h1>Provider &amp; model</h1><span class="spacer"></span><button id="modelClose" class="iconbtn">✕</button></header>
   <div style="padding:8px 8px 0"><input type="search" id="modelSearch" placeholder="Cari model…" autocomplete="off"></div>
+  <div id="modelTarget" class="phead" hidden></div>
   <div class="body" id="modelBody"></div>
 </aside>
 
@@ -583,6 +657,7 @@
   <div class="modal-card">
     <h3 id="modalTitle">Konfirmasi</h3>
     <p id="modalText"></p>
+    <input id="modalInput" type="text" hidden placeholder="…">
     <div class="modal-btns">
       <button id="modalCancel">Batal</button>
       <button id="modalOk" class="primary">Lanjutkan</button>
@@ -754,6 +829,12 @@
               duration: t.duration, error: t.error })),
             atts: (m.atts || []).map((a) => ({ id: a.id, name: a.name, size: a.size, kind: a.kind,
               mime: a.mime, truncated: a.truncated, chars: a.chars, path: a.path, url: a.url })),
+            steers: (m.steers || []).map((s) => ({ text: s.text, pending: false })),
+            clarifies: (m.clarifies || []).map((c) => ({
+              run_id: c.run_id, request_id: c.request_id,
+              execution_generation: c.execution_generation, question: c.question,
+              choices: c.choices || [], answered: true, state: c.state || "",
+            })),
             error: m.error || "", detail: m.detail || "",
           })),
         })),
@@ -903,10 +984,19 @@
     // gambar hasil tool, dsb). Marker disembunyikan dulu sebagai token kontrol
     // supaya lolos escaping, lalu diganti HTML di akhir pipeline.
     const media = [];
-    const text = String(src).replace(/MEDIA:(\/[^\s<>"'`]+)/g, (_, p) => {
-      media.push(p.replace(/[.,;:)\]]+$/, ""));
-      return "\u0001M" + (media.length - 1) + "\u0001";
-    });
+    // Artifact gateway (`/v1/artifacts/download/<id>`) diubah jadi tautan unduh
+    // yang di-proxy same-origin. Token dipakai karena esc() akan merusak tanda
+    // kutip pada HTML <a> kalau ditanam sebelum escaping.
+    const artifacts = [];
+    const text = String(src)
+      .replace(ARTIFACT_RE, (_, id) => {
+        artifacts.push(id);
+        return "\u0002A" + (artifacts.length - 1) + "\u0002";
+      })
+      .replace(/MEDIA:(\/[^\s<>"'`]+)/g, (_, p) => {
+        media.push(p.replace(/[.,;:)\]]+$/, ""));
+        return "\u0001M" + (media.length - 1) + "\u0001";
+      });
     const parts = text.split(/```/);
     let out = "";
     parts.forEach((part, i) => {
@@ -986,7 +1076,18 @@
       }
       flushP(); closeLists();
     });
-    return out.replace(/\u0001M(\d+)\u0001/g, (_, i) => mediaCard(media[+i]));
+    return out.replace(/\u0001M(\d+)\u0001/g, (_, i) => mediaCard(media[+i]))
+      .replace(/\u0002A(\d+)\u0002/g, (_, i) => artifactLink(artifacts[+i]));
+  }
+
+  // Tautan unduh artifact: satu-satunya jalur yang sah adalah proxy same-origin
+  // /v1/artifacts/download/<id> (cookie sesi ikut, API key tetap di server).
+  const ARTIFACT_RE = /\/v1\/artifacts\/download\/([A-Za-z0-9][A-Za-z0-9_.-]{7,127})/g;
+  function artifactLink(id) {
+    const short = id.length > 14 ? id.slice(0, 8) + "…" + id.slice(-4) : id;
+    return `<a class="artlink" href="/v1/artifacts/download/${esc(id)}" rel="noopener"` +
+      ` title="Unduh artifact ${esc(id)} (tautan sekali pakai)">` +
+      `<b>⇩ artifact</b><span class="aid">${esc(short)}</span></a>`;
   }
 
   // Kartu untuk `MEDIA:<path>`: gambar disajikan lewat /api/image (butuh sesi),
@@ -1082,6 +1183,20 @@
 
     if (m.approvals && m.approvals.length) {
       for (const a of m.approvals) bubble.appendChild(approvalCard(a));
+    }
+
+    if (m.clarifies && m.clarifies.length) {
+      for (const c of m.clarifies) bubble.appendChild(clarifyCard(c));
+    }
+
+    if (m.steers && m.steers.length) {
+      for (const s of m.steers) {
+        const chip = document.createElement("div");
+        chip.className = "steerchip" + (s.pending ? " pending" : "");
+        chip.innerHTML = `<span class="sic">↪</span><span>${esc(s.text)}` +
+          (s.pending ? " · mengirim…" : "") + "</span>";
+        bubble.appendChild(chip);
+      }
     }
 
     if (m.error) {
@@ -1182,6 +1297,9 @@
     stopBtn.hidden = !on;
     input.disabled = on || !!viewing;
     sendBtn.disabled = on || !!viewing;
+    // Kotak arahan hanya berguna selama run berjalan (steer ke run yang hidup).
+    $("steerRow").hidden = !on;
+    if (!on) $("steerInput").value = "";
   }
 
   function repaintLast() {
@@ -1544,6 +1662,137 @@
     return offered[0];
   }
 
+  // ---------------- kartu klarifikasi (event clarify.request) ----------------
+  // Alur server: `clarify.request` {prompt_id, execution_generation, question,
+  // choices[], multi_select} → jawab POST /v1/runs/{id}/clarify dengan TEPAT
+  // {request_id, execution_generation, answer} (server menolak field lain).
+  function clarifyCard(c) {
+    const el = document.createElement("div");
+    el.className = "clarify" + (c.answered ? " answered" : "");
+
+    const head = document.createElement("div");
+    head.className = "clhead";
+    head.textContent = c.answered ? "Klarifikasi dijawab" : "Agen menanyakan sesuatu";
+    el.appendChild(head);
+
+    const q = document.createElement("div");
+    q.className = "clq";
+    q.textContent = c.question || "(pertanyaan kosong)";
+    el.appendChild(q);
+
+    if (!c.answered) {
+      const choices = Array.isArray(c.choices) ? c.choices.filter((x) => x) : [];
+      if (choices.length) {
+        const btns = document.createElement("div");
+        btns.className = "clbtns";
+        for (const ch of choices) {
+          const b = document.createElement("button");
+          b.textContent = ch;
+          b.onclick = () => answerClarify(c, ch);
+          btns.appendChild(b);
+        }
+        el.appendChild(btns);
+      }
+      const free = document.createElement("div");
+      free.className = "clfree";
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.placeholder = choices.length ? "Atau tulis jawaban lain…" : "Tulis jawabanmu…";
+      inp.value = c.draft || "";
+      inp.oninput = () => { c.draft = inp.value; };
+      const send = document.createElement("button");
+      send.textContent = "Kirim";
+      send.onclick = () => answerClarify(c, inp.value);
+      inp.onkeydown = (ev) => {
+        if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); answerClarify(c, inp.value); }
+      };
+      free.append(inp, send);
+      el.appendChild(free);
+    }
+
+    const st = document.createElement("div");
+    st.className = "clstate" + (c.state ? (c.ok === false ? " bad" : " ok") : "");
+    st.textContent = c.state || (c.answered ? "" : "run berhenti menunggu jawabanmu");
+    el.appendChild(st);
+    return el;
+  }
+
+  async function answerClarify(c, answer) {
+    const text = String(answer == null ? "" : answer).trim();
+    if (!text) { c.state = "Jawaban tidak boleh kosong."; c.ok = false; repaintLast(); return; }
+    c.state = "mengirim…";
+    repaintLast();
+    const payload = {
+      request_id: c.request_id,
+      execution_generation: c.execution_generation,
+      answer: text,
+    };
+    try {
+      const r = await fetch(`/v1/runs/${encodeURIComponent(c.run_id)}/clarify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        c.ok = false;
+        c.state = "Gagal menjawab: " + (j.detail || j.error?.message || j.error || ("HTTP " + r.status));
+      } else {
+        c.ok = true;
+        c.answered = true;
+        c.state = "Dijawab: " + text.slice(0, 120);
+        statusEl.textContent = "berjalan…";
+      }
+    } catch (e) {
+      c.ok = false;
+      c.state = "Gagal menjawab: " + String(e);
+    }
+    repaintLast();
+  }
+
+  // ---------------- arahan saat run berjalan (steer) ----------------
+  function showSteer(on) {
+    $("steerRow").hidden = !on;
+    if (!on) $("steerInput").value = "";
+  }
+
+  async function sendSteer() {
+    const el = $("steerInput");
+    const text = el.value.trim();
+    if (!text) return;
+    if (!RUN_ID || !controller) { statusEl.textContent = "tidak ada run yang berjalan"; return; }
+    const list = current();
+    const cur = list[list.length - 1];
+    const item = { text, pending: true, ts: now() };
+    if (cur && cur.role === "assistant") {
+      (cur.steers = cur.steers || []).push(item);
+      repaintLast();
+    }
+    el.value = "";
+    try {
+      const r = await fetch(`/v1/runs/${encodeURIComponent(RUN_ID)}/steer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: text }),
+      });
+      const j = await r.json().catch(() => ({}));
+      item.pending = false;
+      if (!r.ok) {
+        item.ok = false;
+        item.text = text + " (ditolak: " + (j.detail || j.error?.message || j.error || ("HTTP " + r.status)) + ")";
+        statusEl.textContent = "arahan ditolak";
+      } else {
+        statusEl.textContent = "arahan terkirim";
+      }
+    } catch (e) {
+      item.pending = false;
+      item.ok = false;
+      item.text = text + " (gagal dikirim)";
+      statusEl.textContent = "arahan gagal";
+    }
+    repaintLast();
+  }
+
   // ---------------- event stream (Runs API) ----------------
   function handleRunEvent(j, evt, cur) {
     const kind = j.event || evt || "";
@@ -1602,6 +1851,38 @@
         cur.tools.push({ name: "subagent", detail: j.goal || j.summary || "", done: false });
         repaintLast();
         return;
+      case "clarify.request": {
+        const c = {
+          run_id: j.run_id || RUN_ID,
+          request_id: j.prompt_id || j.request_id,
+          execution_generation: j.execution_generation,
+          question: j.question || "",
+          choices: Array.isArray(j.choices) ? j.choices : [],
+          multi_select: !!j.multi_select,
+        };
+        (cur.clarifies = cur.clarifies || []).push(c);
+        statusEl.textContent = "menunggu jawabanmu";
+        repaintLast();
+        return;
+      }
+      case "clarify.settled": {
+        const open = (cur.clarifies || []).filter((c) => !c.answered && c.request_id === (j.prompt_id || ""));
+        if (open.length) {
+          open[open.length - 1].answered = true;
+        } else {
+          const last = (cur.clarifies || []).filter((c) => !c.answered).pop();
+          if (last) last.answered = true;
+        }
+        repaintLast();
+        return;
+      }
+      case "run.steered": {
+        const pendingSteer = (cur.steers || []).filter((s) => s.pending).pop();
+        if (pendingSteer) pendingSteer.pending = false;
+        else (cur.steers = cur.steers || []).push({ text: "(arahan diterima agen)", ok: true });
+        repaintLast();
+        return;
+      }
       case "subagent.complete": {
         const s = cur.tools.filter((t) => t.name === "subagent" && !t.done).pop();
         if (s) { s.done = true; s.detail = (s.detail + " — " + (j.status || "selesai")).slice(0, 160); }
@@ -1648,7 +1929,7 @@
     conv.messages.push({ role: "user", text, atts: storedAtts(atts), ts: now() });
     if (!conv.title) conv.title = titleOf(conv.messages) || "Percakapan baru";
     const cur = { role: "assistant", text: "", thinking: "", tools: [], approvals: [],
-      __streaming: true, ts: now() };
+      clarifies: [], steers: [], __streaming: true, ts: now() };
     conv.messages.push(cur);
     conv.updated = now();
     input.value = "";
@@ -1756,6 +2037,7 @@
     $("histPanel").classList.remove("open");
     $("modelPanel").classList.remove("open");
     $("settingsPanel").classList.remove("open");
+    MODEL_TARGET = "";
   }
   $("scrim").onclick = closePanels;
   $("histClose").onclick = closePanels;
@@ -1784,18 +2066,153 @@
       for (const s of items) {
         const el = document.createElement("div");
         el.className = "sess";
+        const title = s.title || "(tanpa judul)";
         el.innerHTML =
-          `<div class="t">${esc(s.title || "(tanpa judul)")}</div>` +
+          `<div class="t">${esc(title)}</div>` +
           `<div class="m"><span class="src">${esc(s.source || "?")}</span>` +
           `<span>${s.message_count || 0} pesan</span>` +
-          `<span>${esc(rel(s.last_active))}</span></div>`;
-        el.onclick = () => openSession(s);
+          `<span>${esc(rel(s.last_active))}</span>` +
+          (s.model ? `<span class="mono">${esc(s.model)}</span>` : "") + `</div>`;
+        const acts = document.createElement("div");
+        acts.className = "sacts";
+        for (const [label, title2, fn, danger] of [
+          ["Buka", "Baca transkrip sesi ini (mode riwayat)", () => openSession(s)],
+          ["Ganti judul", "Ubah judul sesi (PATCH /api/sessions/{id})", (ev) => renameSession(s, ev), false],
+          ["Fork", "Cabangkan sesi jadi salinan baru (POST …/fork)", (ev) => forkSession(s, ev), false],
+          ["Hapus", "Hapus sesi dari Hermes (DELETE /api/sessions/{id})", (ev) => deleteSession(s, ev), true],
+        ]) {
+          const b = document.createElement("button");
+          b.textContent = label;
+          b.title = title2;
+          if (danger) b.className = "danger";
+          b.onclick = (ev) => { ev.stopPropagation(); fn(ev); };
+          acts.appendChild(b);
+        }
+        el.appendChild(acts);
+        // Klik badan kartu tetap membuka transkrip, sama seperti sebelumnya.
+        el.onclick = (ev) => { if (!ev.target.closest(".sacts")) openSession(s); };
         body.appendChild(el);
       }
     } catch (e) {
       body.innerHTML = `<div class="err" style="margin:8px">Gagal memuat riwayat.\n${esc(String(e))}</div>`;
     }
   }
+
+  // --- aksi sesi (A6): buat / ganti judul / fork / hapus -------------------
+  function histMsg(text, kind) {
+    const body = $("histBody");
+    const d = document.createElement("div");
+    d.className = kind === "err" ? "err" : "phead";
+    d.textContent = text;
+    body.prepend(d);
+    setTimeout(() => d.remove(), 4000);
+  }
+
+  async function createSession() {
+    $("histNew").disabled = true;
+    histMsg("membuat sesi baru…");
+    try {
+      const r = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Sesi webchat " + new Date().toLocaleString("id-ID") }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.detail || j.error?.message || j.error || ("HTTP " + r.status));
+      const sess = j.session || {};
+      const conv = makeConv();
+      conv.sessionId = sess.id;
+      conv.title = sess.title || "Sesi baru";
+      convs.unshift(conv);
+      activeId = conv.id;
+      viewing = null;
+      $("banner").style.display = "none";
+      save();
+      renderSidebar();
+      render();
+      sidEl.textContent = conv.sessionId;
+      statusEl.textContent = "sesi dibuat: " + conv.sessionId;
+      closePanels();
+      input.focus();
+      histMsg("sesi dibuat: " + sess.id);
+    } catch (e) {
+      histMsg("Gagal membuat sesi: " + e.message, "err");
+    }
+    $("histNew").disabled = false;
+  }
+
+  async function renameSession(s, ev) {
+    ev.stopPropagation();
+    const title = await askText("Ganti judul sesi", "Judul hanya mengubah tampilan riwayat, bukan isi percakapan.",
+      s.title || "", "Simpan");
+    if (title == null) return;
+    histMsg("menyimpan judul…");
+    try {
+      const r = await fetch(`/api/sessions/${encodeURIComponent(s.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.detail || j.error?.message || j.error || ("HTTP " + r.status));
+      // Percakapan lokal yang menunjuk sesi ini ikut diperbarui judulnya.
+      convs.filter((c) => c.sessionId === s.id).forEach((c) => { c.title = title; });
+      save();
+      renderSidebar();
+      histMsg("judul disimpan");
+      loadHistory();
+    } catch (e) {
+      histMsg("Gagal mengganti judul: " + e.message, "err");
+    }
+  }
+
+  async function forkSession(s, ev) {
+    ev.stopPropagation();
+    const ok = await ask("Fork sesi ini?",
+      `Sesi "${s.title || s.id}" dicabangkan: transkripnya disalin ke sesi baru.\n` +
+      `Sama seperti /branch di CLI — sesi ASAL ditandai berakhir (branched).`, "Fork");
+    if (!ok) return;
+    histMsg("membuat fork…");
+    try {
+      const r = await fetch(`/api/sessions/${encodeURIComponent(s.id)}/fork`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.detail || j.error?.message || j.error || ("HTTP " + r.status));
+      const fork = j.session || {};
+      histMsg("fork dibuat: " + (fork.id || "?"));
+      loadHistory();
+    } catch (e) {
+      histMsg("Gagal fork: " + e.message, "err");
+    }
+  }
+
+  async function deleteSession(s, ev) {
+    ev.stopPropagation();
+    const ok = await ask("Hapus sesi dari Hermes?",
+      `"${s.title || s.id}" dihapus permanen dari state Hermes (transkrip, tool call, dan gambarnya).\n` +
+      `Percakapan di browser ini tidak terhapus — hanya sesi di server.`, "Hapus sesi");
+    if (!ok) return;
+    histMsg("menghapus…");
+    try {
+      const r = await fetch(`/api/sessions/${encodeURIComponent(s.id)}`, { method: "DELETE" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.detail || j.error?.message || j.error || ("HTTP " + r.status));
+      if (viewing && viewing.id === s.id) {
+        viewing = null;
+        $("banner").style.display = "none";
+        render();
+      }
+      histMsg(j.deleted === false ? "sesi tidak ditemukan (sudah terhapus)" : "sesi dihapus");
+      loadHistory();
+    } catch (e) {
+      histMsg("Gagal menghapus: " + e.message, "err");
+    }
+  }
+
+  $("histNew").onclick = createSession;
 
   function textOf(c) {
     if (c == null) return "";
@@ -1887,13 +2304,64 @@
   };
 
   // ---------------- pemilih model ----------------
+  // Dua target: profil (default, disimpan di localStorage seperti sebelumnya) dan
+  // satu sesi (POST /api/sessions/{id}/model → kunci model di sisi Hermes).
+  let MODEL_TARGET = "";          // "" = profil default; selain itu = id sesi
+  let sessionInfo = null;         // respons GET /api/sessions/{id} untuk panel setelan
+
   function paintModel() {
     $("modelProv").textContent = PROVIDER || "default";
     $("modelName").textContent = MODEL || "…";
   }
 
+  function paintModelTarget() {
+    const bar = $("modelTarget");
+    if (MODEL_TARGET) {
+      bar.hidden = false;
+      bar.textContent = "target: sesi " + MODEL_TARGET + " — klik model untuk mengunci sesi ini";
+    } else {
+      bar.hidden = true;
+      bar.textContent = "";
+    }
+  }
+
+  const activeSessionId = () => (viewing ? viewing.id : active().sessionId);
+
+  async function loadSessionInfo() {
+    const sid = activeSessionId();
+    sessionInfo = null;
+    if (!sid) return null;
+    try {
+      const r = await fetch(`/api/sessions/${encodeURIComponent(sid)}`, { cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) sessionInfo = j.session || null;
+    } catch { sessionInfo = null; }
+    return sessionInfo;
+  }
+
+  async function setSessionModel(sid, model, provider) {
+    try {
+      const r = await fetch(`/api/sessions/${encodeURIComponent(sid)}/model`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, provider }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.detail || j.error?.message || j.error || ("HTTP " + r.status));
+      const rt = j.runtime || {};
+      statusEl.textContent = "model sesi: " + (rt.provider || provider) + " · " + (rt.model || model);
+      await loadSessionInfo();
+      renderSettings();
+      return true;
+    } catch (e) {
+      statusEl.textContent = "gagal set model sesi: " + e.message;
+      return false;
+    }
+  }
+
   function renderModelList(q) {
     const body = $("modelBody");
+    paintModelTarget();
     if (!options) { body.innerHTML = '<div class="phead">memuat…</div>'; return; }
     const needle = (q || "").trim().toLowerCase();
     const rows = [];
@@ -1912,7 +2380,14 @@
       el.className = "mrow" + (r.authed ? "" : " na") + (r.mid === MODEL && r.prov === PROVIDER ? " sel" : "");
       el.innerHTML = `<span class="prov">${esc(r.prov)}</span><span class="id">${esc(r.mid)}</span>`;
       el.title = r.name + (r.authed ? " · terautentikasi" : " · belum terautentikasi");
-      el.onclick = () => {
+      el.onclick = async () => {
+        if (MODEL_TARGET) {
+          const target = MODEL_TARGET;
+          closePanels();
+          await setSessionModel(target, r.mid, r.prov);
+          MODEL_TARGET = "";
+          return;
+        }
         MODEL = r.mid; PROVIDER = r.prov;
         save(); paintModel(); closePanels();
         statusEl.textContent = "model: " + r.prov + " · " + r.mid;
@@ -1957,6 +2432,7 @@
   }
 
   $("modelBtn").onclick = () => {
+    MODEL_TARGET = "";
     openPanel("modelPanel");
     if (!options) loadOptions(); else renderModelList($("modelSearch").value);
   };
@@ -2071,6 +2547,59 @@
       "— TUI, dashboard, dan Open WebUI punya kebijakannya sendiri.\n" +
       "Perintah yang diblokir hardline oleh Hermes tetap ditolak: halaman ini tidak bisa meloloskannya.";
     body.appendChild(note);
+
+    renderSessionModel(body);
+  }
+
+  // --- model per sesi (A8) -------------------------------------------------
+  // Mengunci model untuk satu sesi Hermes: berlaku di semua surface untuk sesi
+  // itu, tanpa mengubah model default profil.
+  function renderSessionModel(body) {
+    const h = document.createElement("div");
+    h.className = "phead";
+    h.textContent = "Model untuk sesi ini";
+    body.appendChild(h);
+
+    const sid = activeSessionId();
+    const info = sessionInfo;
+    const locked = !!(info && info.has_model_config);
+    const row = document.createElement("div");
+    row.className = "setrow" + (locked ? " on" : "");
+    row.innerHTML =
+      `<span class="mark"></span><div>` +
+      `<div class="lbl">${locked ? "Model sesi terkunci" : "Ikut model profil"}</div>` +
+      `<div class="hint2">Sesi: <code>${esc(sid)}</code>` +
+      (locked && info.model ? ` · model: <code>${esc(info.model)}</code>` : "") +
+      `<br>Kunci model sesi menang atas pilihan model di header chat, dan tidak mengubah default profil.</div>` +
+      `</div>`;
+    const acts = document.createElement("div");
+    acts.style.cssText = "display:flex; gap:8px; flex-wrap:wrap; margin-top:8px";
+    const pick = document.createElement("button");
+    pick.textContent = "Pilih model sesi…";
+    pick.onclick = () => {
+      MODEL_TARGET = sid;
+      openPanel("modelPanel");
+      if (!options) loadOptions().then(() => renderModelList($("modelSearch").value));
+      else renderModelList($("modelSearch").value);
+    };
+    const refresh = document.createElement("button");
+    refresh.textContent = "Muat ulang info sesi";
+    refresh.onclick = async () => {
+      await loadSessionInfo();
+      renderSettings();
+      statusEl.textContent = "info sesi dimuat";
+    };
+    acts.append(pick, refresh);
+    row.appendChild(acts);
+    body.appendChild(row);
+
+    if (!info) {
+      const warn = document.createElement("div");
+      warn.className = "setnote";
+      warn.textContent = "Sesi ini belum punya baris di Hermes (pesan pertama akan membuatnya). " +
+        "Kunci model baru bisa dipasang setelah sesi ada, atau lewat tombol \"+ Sesi\" di Riwayat.";
+      body.appendChild(warn);
+    }
   }
 
   $("auto").onclick = () => {
@@ -2082,27 +2611,56 @@
       ? "tanpa konfirmasi: aktif · " + SCOPE_LABEL[AUTO_SCOPE]
       : "konfirmasi: tanya dulu";
   };
-  $("settings").onclick = () => { openPanel("settingsPanel"); renderSettings(); };
+  $("settings").onclick = async () => {
+    openPanel("settingsPanel");
+    renderSettings();
+    await loadSessionInfo();
+    renderSettings();
+  };
 
   // ---------------- modal & lightbox ----------------
   let modalResolve = null;
-  function ask(title, text, okLabel) {
+  let modalMode = "confirm";
+  function openModal(title, text, okLabel) {
     $("modalTitle").textContent = title;
     $("modalText").textContent = text || "";
     $("modalOk").textContent = okLabel || "Lanjutkan";
     $("modal").classList.add("open");
+  }
+  function ask(title, text, okLabel) {
+    modalMode = "confirm";
+    $("modalInput").hidden = true;
+    openModal(title, text, okLabel);
     setTimeout(() => $("modalOk").focus(), 30);
+    return new Promise((resolve) => { modalResolve = resolve; });
+  }
+  // Varian dengan input teks (ganti judul sesi) — tetap modal internal, bukan prompt().
+  function askText(title, text, value, okLabel) {
+    modalMode = "text";
+    const inp = $("modalInput");
+    inp.hidden = false;
+    inp.value = value || "";
+    openModal(title, text, okLabel);
+    setTimeout(() => { inp.focus(); inp.select(); }, 30);
     return new Promise((resolve) => { modalResolve = resolve; });
   }
   function closeModal(result) {
     $("modal").classList.remove("open");
     const fn = modalResolve;
+    const value = $("modalInput").value;
+    $("modalInput").hidden = true;
+    $("modalInput").value = "";
     modalResolve = null;
-    if (fn) fn(result);
+    if (!fn) return;
+    if (modalMode === "text") fn(result ? value.trim() : null);
+    else fn(result);
   }
   $("modalOk").onclick = () => closeModal(true);
   $("modalCancel").onclick = () => closeModal(false);
   $("modal").onclick = (ev) => { if (ev.target === $("modal")) closeModal(false); };
+  $("modalInput").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); closeModal(true); }
+  });
 
   function openLightbox(src, alt) {
     $("lightboxImg").src = src;
@@ -2255,6 +2813,10 @@
 
   sendBtn.onclick = send;
   stopBtn.onclick = stopRun;
+  $("steerSend").onclick = sendSteer;
+  $("steerInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); sendSteer(); }
+  });
   $("newChat").onclick = () => {
     if (controller) { statusEl.textContent = "tunggu run selesai dulu"; return; }
     if (viewing) {

@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Otomasi — Hermes</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f1115'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%237aa2f7'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0f1115; --bg2:#161a21; --bg3:#1d222b; --line:#262c37; --line2:#333c4c;
+    --fg:#e6e9ef; --dim:#8b93a1; --faint:#5f6875;
+    --acc:#7aa2f7; --acc-soft:#1b2740; --acc2:#bb9af7;
+    --ok:#9ece6a; --warn:#e0af68; --err:#f7768e; --radius:12px;
+  }
+  *{box-sizing:border-box; scrollbar-width:thin; scrollbar-color:#333d52 transparent}
+  *::-webkit-scrollbar{width:10px;height:10px}
+  *::-webkit-scrollbar-thumb{background:#2c3549;border-radius:9px;border:2px solid transparent;background-clip:padding-box}
+  :focus-visible{outline:2px solid var(--acc); outline-offset:1px}
+  ::selection{background:#33517f; color:#fff}
+  [hidden]{display:none!important}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  a{color:var(--acc)}
+  .head{position:sticky; top:0; z-index:6; background:var(--bg2); border-bottom:1px solid var(--line)}
+  .top{display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:9px 12px}
+  .top h1{font-size:15px; margin:0; font-weight:600; white-space:nowrap}
+  .spacer{flex:1}
+  nav.pages{
+    display:flex; align-items:stretch; border:1px solid var(--line); border-radius:8px;
+    overflow:hidden; background:var(--bg3);
+  }
+  nav.pages a{
+    font-size:12.5px; color:var(--dim); text-decoration:none; padding:7px 10px;
+    min-height:34px; display:inline-flex; align-items:center; white-space:nowrap;
+  }
+  nav.pages a + a{border-left:1px solid var(--line)}
+  nav.pages a:hover{color:#fff; background:#202839}
+  nav.pages a[aria-current="page"]{color:#fff; background:var(--acc-soft)}
+  .icon{
+    font:inherit; font-size:15px; line-height:1; color:var(--fg); background:var(--bg3);
+    border:1px solid var(--line); border-radius:8px; width:38px; height:38px; cursor:pointer;
+  }
+  .icon:hover{border-color:var(--acc); color:#fff}
+  .icon.busy{opacity:.5}
+  .btn{
+    font:inherit; font-size:13px; color:var(--fg); background:var(--bg3);
+    border:1px solid var(--line); border-radius:9px; padding:8px 11px; min-height:38px;
+    display:inline-flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap;
+  }
+  .btn:hover{border-color:var(--acc); color:#fff}
+  .btn:disabled{opacity:.45; cursor:not-allowed}
+  .btn.primary{background:var(--acc); border-color:var(--acc); color:#0b1020; font-weight:600}
+  .btn.primary:hover{background:#8fb2ff; color:#0b1020}
+  .btn.danger{border-color:#5b2b36; color:var(--err); background:transparent}
+  .btn.danger:hover{border-color:var(--err)}
+  .btn.sm{min-height:30px; padding:4px 9px; font-size:12px; border-radius:7px}
+
+  /* ---------- tab ---------- */
+  .tabs{display:flex; gap:4px; padding:7px 12px; background:var(--bg2); border-bottom:1px solid var(--line);
+        overflow-x:auto; position:sticky; top:52px; z-index:5}
+  .tabs button{
+    font:inherit; font-size:13px; color:var(--dim); background:transparent; border:1px solid transparent;
+    border-radius:9px; padding:7px 12px; cursor:pointer; white-space:nowrap;
+  }
+  .tabs button:hover{color:#fff; background:var(--bg3)}
+  .tabs button[aria-selected="true"]{color:#fff; background:var(--acc-soft); border-color:#2b3b57}
+  .tabs .count{font:11px/1 ui-monospace,monospace; color:var(--faint); margin-left:6px}
+
+  main{padding:14px 12px 60px; max-width:1000px; margin:0 auto}
+  section[role="tabpanel"]{animation:fade .16s ease}
+  @keyframes fade{from{opacity:0; transform:translateY(3px)}to{opacity:1; transform:none}}
+  .sec-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:2px 0 10px}
+  .sec-head h2{font-size:14px; margin:0; font-weight:600; letter-spacing:.02em}
+  .note{font-size:12.5px; color:var(--dim); margin:0 0 12px}
+  .note.warn{color:var(--warn)}
+  .empty{
+    border:1px dashed var(--line2); border-radius:var(--radius); padding:18px 14px;
+    color:var(--dim); font-size:13.5px; text-align:center; background:#12151b;
+  }
+  .card{
+    border:1px solid var(--line); border-radius:var(--radius); background:var(--bg2);
+    padding:12px; margin-bottom:10px;
+  }
+  .card.paused{border-color:#453a22}
+  .card-top{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .card-top b{font-size:14px; font-weight:600; word-break:break-word}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px}
+  .chip{
+    display:inline-flex; align-items:center; gap:4px; font:11px/1.6 ui-monospace,monospace;
+    padding:1px 7px; border-radius:999px; border:1px solid var(--line2); color:var(--dim);
+    background:#171b22; white-space:nowrap;
+  }
+  .chip.ok{color:var(--ok); border-color:#2c4227; background:#151d12}
+  .chip.warn{color:var(--warn); border-color:#4a3a1c; background:#1d1810}
+  .chip.bad{color:var(--err); border-color:#4b2833; background:#1e1216}
+  .chip.acc{color:var(--acc); border-color:#2b3b57; background:var(--acc-soft)}
+  .kv{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:6px 14px; margin-top:9px}
+  .kv div{font-size:12.5px; color:var(--dim); min-width:0}
+  .kv b{display:block; color:var(--fg); font-size:12.5px; font-weight:500; word-break:break-word}
+  .prompt{
+    margin-top:9px; font:12.5px/1.5 ui-monospace,monospace; color:var(--dim);
+    background:#12151b; border:1px solid var(--line); border-radius:8px; padding:7px 9px;
+    white-space:pre-wrap; word-break:break-word; max-height:90px; overflow:auto;
+  }
+  .acts{display:flex; gap:6px; flex-wrap:wrap; margin-top:10px}
+  .err{
+    margin-top:9px; font:12.5px/1.5 ui-monospace,monospace; color:var(--err);
+    background:#1e1216; border:1px solid #4b2833; border-radius:8px; padding:7px 9px;
+    white-space:pre-wrap; word-break:break-word;
+  }
+  .out{
+    margin-top:9px; font:12.5px/1.55 ui-monospace,monospace; color:var(--fg);
+    background:#12151b; border:1px solid var(--line); border-radius:8px; padding:9px;
+    white-space:pre-wrap; word-break:break-word; max-height:280px; overflow:auto;
+  }
+  .out .meta{color:var(--faint); font-size:11px; display:block; margin-bottom:6px}
+
+  /* ---------- form ---------- */
+  form.buat{border:1px solid var(--line); border-radius:var(--radius); background:var(--bg2); padding:12px; margin-bottom:14px}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+  @media(max-width:640px){.grid2{grid-template-columns:1fr}}
+  label.f{display:block; font-size:12px; color:var(--dim); margin-bottom:4px}
+  input[type=text],input[type=search],textarea,select{
+    width:100%; font:inherit; font-size:13.5px; color:var(--fg); background:#12151b;
+    border:1px solid var(--line2); border-radius:8px; padding:9px 10px; outline:none;
+  }
+  input:focus,textarea:focus,select:focus{border-color:var(--acc)}
+  textarea{min-height:76px; resize:vertical; line-height:1.5}
+  .hint3{font-size:11.5px; color:var(--faint); margin-top:4px}
+  .presets{display:flex; gap:6px; flex-wrap:wrap; margin-top:6px}
+  .presets button{
+    font:11.5px/1 ui-monospace,monospace; color:var(--dim); background:#171b22;
+    border:1px solid var(--line); border-radius:999px; padding:5px 9px; cursor:pointer;
+  }
+  .presets button:hover{color:#fff; border-color:var(--acc)}
+  .form-acts{display:flex; gap:8px; margin-top:12px; flex-wrap:wrap}
+  .form-err{color:var(--err); font-size:12.5px; margin-top:8px; white-space:pre-wrap}
+
+  /* ---------- skills / toolsets ---------- */
+  .row{
+    display:flex; align-items:flex-start; gap:10px; padding:9px 10px; border-radius:10px;
+    border:1px solid transparent; border-bottom-color:var(--line);
+  }
+  .row:hover{background:#141821; border-color:var(--line)}
+  .row:last-child{border-bottom-color:transparent}
+  .row .main{flex:1; min-width:0}
+  .row .nm{font-size:13.5px; font-weight:500; word-break:break-word}
+  .row .ds{font-size:12.5px; color:var(--dim); margin-top:1px; word-break:break-word}
+  .row .tools{font:11.5px/1.6 ui-monospace,monospace; color:var(--faint); margin-top:3px; word-break:break-word}
+  .grouphead{
+    font:11px/1 ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--faint); padding:14px 4px 6px;
+  }
+  .sticky-search{position:sticky; top:105px; background:var(--bg); padding:6px 0 8px; z-index:3}
+
+  /* ---------- status ---------- */
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px}
+  .stat{border:1px solid var(--line); border-radius:var(--radius); background:var(--bg2); padding:11px 12px}
+  .stat .lbl{font:11px/1 ui-monospace,monospace; letter-spacing:.07em; text-transform:uppercase; color:var(--faint)}
+  .stat .val{font-size:17px; font-weight:600; margin-top:6px; word-break:break-word}
+  .stat .sub{font-size:11.5px; color:var(--dim); margin-top:3px; word-break:break-word}
+  .checks{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px}
+  table.cap{width:100%; border-collapse:collapse; font-size:12.5px; margin-top:4px}
+  table.cap td{padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:top}
+  table.cap td:first-child{color:var(--dim); font-family:ui-monospace,monospace; font-size:11.5px}
+  i.dot{width:7px;height:7px;border-radius:50%;display:inline-block;background:var(--ok)}
+  i.dot.bad{background:var(--err)} i.dot.warn{background:var(--warn)}
+
+  /* ---------- modal ---------- */
+  .scrim{position:fixed; inset:0; background:#000a; z-index:40; display:none}
+  .scrim.open{display:block}
+  .modal{
+    position:fixed; z-index:41; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:min(460px,92vw); background:var(--bg2); border:1px solid var(--line2);
+    border-radius:14px; padding:16px; display:none; box-shadow:0 20px 60px #000a;
+  }
+  .modal.open{display:block}
+  .modal h3{margin:0 0 6px; font-size:15px}
+  .modal p{margin:0; color:var(--dim); font-size:13.5px; white-space:pre-wrap}
+  .modal .acts{justify-content:flex-end; margin-top:14px}
+  .toast{
+    position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:60;
+    background:#1b2230; border:1px solid var(--line2); color:var(--fg); font-size:13px;
+    padding:9px 14px; border-radius:999px; opacity:0; pointer-events:none; transition:opacity .18s;
+    max-width:92vw; text-align:center;
+  }
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<header class="head">
+  <div class="top">
+    <h1>Otomasi</h1>
+    <span class="spacer"></span>
+    <nav class="pages" aria-label="Navigasi halaman">
+      <a href="/">Chat</a>
+      <a href="/agents">Kanban</a>
+      <a href="/workspace">Workspace</a>
+      <a href="/otomasi" aria-current="page">Otomasi</a>
+    </nav>
+    <button class="icon" id="refresh" aria-label="Muat ulang sekarang" title="Muat ulang sekarang">⟳</button>
+  </div>
+  <div class="tabs" role="tablist" aria-label="Bagian otomasi">
+    <button role="tab" id="tab-cron" aria-controls="panel-cron" aria-selected="true">Cron<span class="count" id="cCron"></span></button>
+    <button role="tab" id="tab-skills" aria-controls="panel-skills" aria-selected="false">Skills<span class="count" id="cSkills"></span></button>
+    <button role="tab" id="tab-toolsets" aria-controls="panel-toolsets" aria-selected="false">Toolsets<span class="count" id="cToolsets"></span></button>
+    <button role="tab" id="tab-status" aria-controls="panel-status" aria-selected="false">Status</button>
+  </div>
+</header>
+
+<main>
+  <!-- ================= CRON ================= -->
+  <section role="tabpanel" id="panel-cron" aria-labelledby="tab-cron">
+    <div class="sec-head">
+      <h2>Tugas terjadwal</h2>
+      <span class="spacer"></span>
+      <button class="btn primary" id="newJob">+ Job baru</button>
+    </div>
+    <p class="note" id="cronNote">Job cron Hermes: dijalankan gateway, bukan oleh tab ini. Halaman ini hanya membaca dan mengubah daftar job yang sama dengan <code>hermes cron list</code>.</p>
+
+    <form class="buat" id="jobForm" hidden autocomplete="off">
+      <div class="grid2">
+        <div>
+          <label class="f" for="fName">Nama job</label>
+          <input type="text" id="fName" maxlength="200" placeholder="Ringkasan pagi" required>
+        </div>
+        <div>
+          <label class="f" for="fSchedule">Jadwal</label>
+          <input type="text" id="fSchedule" placeholder="every 1 day / 0 9 * * * / 30m" required>
+          <div class="hint3">Durasi (<span class="mono">30m</span>, <span class="mono">2h</span>), cron 5 kolom, atau frasa <span class="mono">every …</span>.</div>
+          <div class="presets">
+            <button type="button" data-preset="every 1 day">every 1 day</button>
+            <button type="button" data-preset="0 9 * * *">0 9 * * *</button>
+            <button type="button" data-preset="every 6 hours">every 6 hours</button>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <label class="f" for="fPrompt">Prompt untuk agen</label>
+        <textarea id="fPrompt" placeholder="Tulis instruksi yang dijalankan tiap kali job berbunyi…"></textarea>
+      </div>
+      <div class="grid2" style="margin-top:10px">
+        <div>
+          <label class="f" for="fSkills">Skills (opsional, pisahkan koma)</label>
+          <input type="text" id="fSkills" placeholder="youtube-content, humanizer">
+        </div>
+        <div>
+          <label class="f" for="fDeliver">Kirim hasil ke</label>
+          <input type="text" id="fDeliver" placeholder="local" value="local">
+          <div class="hint3"><span class="mono">local</span> = simpan saja (bisa dilihat di sini). Platform lain mengikuti pengaturan gateway.</div>
+        </div>
+      </div>
+      <div class="form-acts">
+        <button class="btn primary" id="jobSubmit" type="submit">Simpan job</button>
+        <button class="btn" type="button" id="jobCancel">Batal</button>
+        <span class="spacer"></span>
+        <span class="chip" id="jobMode">job baru</span>
+      </div>
+      <div class="form-err" id="jobErr" hidden></div>
+    </form>
+
+    <div id="cronList"><div class="empty">memuat job…</div></div>
+  </section>
+
+  <!-- ================= SKILLS ================= -->
+  <section role="tabpanel" id="panel-skills" aria-labelledby="tab-skills" hidden>
+    <div class="sec-head">
+      <h2>Skills terpasang</h2>
+      <span class="spacer"></span>
+      <span class="chip" id="skillsSrc"></span>
+    </div>
+    <div class="sticky-search">
+      <input type="search" id="skillSearch" placeholder="Cari nama, deskripsi, atau kategori…" autocomplete="off">
+    </div>
+    <div class="note" id="skillsNote"></div>
+    <div id="skillsList"><div class="empty">memuat skills…</div></div>
+  </section>
+
+  <!-- ================= TOOLSETS ================= -->
+  <section role="tabpanel" id="panel-toolsets" aria-labelledby="tab-toolsets" hidden>
+    <div class="sec-head">
+      <h2>Toolset agent (API server)</h2>
+      <span class="spacer"></span>
+      <span class="chip" id="tsSummary"></span>
+    </div>
+    <p class="note">Read-only: yang aktif di sini adalah yang dipakai setiap run dari halaman chat. Mengubahnya lewat <span class="mono">platform_toolsets</span> di config Hermes.</p>
+    <div id="toolsetsList"><div class="empty">memuat toolset…</div></div>
+  </section>
+
+  <!-- ================= STATUS ================= -->
+  <section role="tabpanel" id="panel-status" aria-labelledby="tab-status" hidden>
+    <div class="sec-head">
+      <h2>Status sistem</h2>
+      <span class="spacer"></span>
+      <span class="chip" id="statusAt"></span>
+    </div>
+    <div id="statusBody"><div class="empty">memuat status…</div></div>
+  </section>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <h3 id="modalTitle">Konfirmasi</h3>
+  <p id="modalText"></p>
+  <div class="acts">
+    <button class="btn" id="modalCancel">Batal</button>
+    <button class="btn primary" id="modalOk">Lanjutkan</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  // 401 dari proxy = cookie login sudah tidak sah → kembali ke form login.
+  const _fetch = window.fetch.bind(window);
+  window.fetch = (input, init) => _fetch(input, init).then((res) => {
+    if (res.status === 401) {
+      const next = encodeURIComponent(location.pathname + location.search);
+      location.replace(`/login?next=${next}`);
+    }
+    return res;
+  });
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => t.classList.remove("show"), 2600);
+  }
+
+  // ---- modal internal (tidak memakai confirm() bawaan browser) ----
+  let modalResolve = null;
+  function ask(title, text, okLabel) {
+    $("modalTitle").textContent = title;
+    $("modalText").textContent = text || "";
+    $("modalOk").textContent = okLabel || "Lanjutkan";
+    $("modal").classList.add("open");
+    $("scrim").classList.add("open");
+    setTimeout(() => $("modalOk").focus(), 20);
+    return new Promise((resolve) => { modalResolve = resolve; });
+  }
+  function closeModal(result) {
+    $("modal").classList.remove("open");
+    $("scrim").classList.remove("open");
+    const fn = modalResolve;
+    modalResolve = null;
+    if (fn) fn(result);
+  }
+  $("modalOk").onclick = () => closeModal(true);
+  $("modalCancel").onclick = () => closeModal(false);
+  $("scrim").onclick = () => closeModal(false);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && $("modal").classList.contains("open")) closeModal(false);
+  });
+
+  // ---- fetch helper: JSON + pesan galat yang bisa dibaca ----
+  async function api(path, opts) {
+    const res = await fetch(path, Object.assign({ cache: "no-store" }, opts || {}));
+    const raw = await res.text();
+    let data = null;
+    try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
+    if (!res.ok) {
+      const msg = (data && (data.detail || (data.error && (data.error.message || data.error)))) ||
+        raw.slice(0, 300) || ("HTTP " + res.status);
+      const err = new Error(String(msg));
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  }
+  const sendJSON = (path, method, body) => api(path, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  // ---- waktu ----
+  const pad = (n) => String(n).padStart(2, "0");
+  function fmtTime(ts) {
+    if (!ts) return "—";
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return String(ts);
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  const parseWhen = (v) => {
+    if (!v) return null;
+    if (typeof v === "number") return v > 1e12 ? v : v * 1000;
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? null : d.getTime();
+  };
+  function rel(v) {
+    const t = parseWhen(v);
+    if (!t) return "—";
+    const s = Math.max(0, (Date.now() - t) / 1000);
+    if (s < 60) return "baru saja";
+    if (s < 3600) return Math.floor(s / 60) + " mnt lalu";
+    if (s < 86400) return Math.floor(s / 3600) + " jam lalu";
+    return Math.floor(s / 86400) + " hari lalu";
+  }
+  function fmtDur(sec) {
+    if (sec == null) return "—";
+    const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+    if (d) return `${d} hari ${h} jam`;
+    if (h) return `${h} jam ${m} mnt`;
+    return `${m} mnt`;
+  }
+  function fmtBytes(n) {
+    if (!n && n !== 0) return "—";
+    if (n < 1024) return n + " B";
+    if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+    if (n < 1073741824) return (n / 1048576).toFixed(1) + " MB";
+    return (n / 1073741824).toFixed(2) + " GB";
+  }
+
+  // ---- tab ----
+  const TABS = ["cron", "skills", "toolsets", "status"];
+  const loaded = { cron: false, skills: false, toolsets: false, status: false };
+  function showTab(name, { force } = {}) {
+    if (!TABS.includes(name)) name = "cron";
+    for (const t of TABS) {
+      $(`tab-${t}`).setAttribute("aria-selected", String(t === name));
+      $(`panel-${t}`).hidden = t !== name;
+    }
+    if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+    if (!loaded[name] || force) {
+      loaded[name] = true;
+      ({ cron: loadCron, skills: loadSkills, toolsets: loadToolsets, status: loadStatus })[name]();
+    }
+  }
+  for (const t of TABS) {
+    $(`tab-${t}`).onclick = () => showTab(t);
+    $(`tab-${t}`).addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      const i = TABS.indexOf(t) + (e.key === "ArrowRight" ? 1 : -1);
+      const next = TABS[(i + TABS.length) % TABS.length];
+      $(`tab-${next}`).focus();
+      showTab(next);
+    });
+  }
+
+  // =====================================================================
+  // CRON
+  // =====================================================================
+  let jobs = [];
+  let editing = "";                       // id job yang sedang diubah di form
+  let pollTimer = null;
+
+  const STATE_CHIP = (job) => {
+    if (job.paused_at || job.state === "paused") return '<span class="chip warn">dijeda</span>';
+    if (job.state === "completed") return '<span class="chip">selesai</span>';
+    return '<span class="chip ok">aktif</span>';
+  };
+
+  function jobCard(job) {
+    const el = document.createElement("div");
+    el.className = "card" + (job.state === "paused" ? " paused" : "");
+    el.dataset.id = job.id;
+    const last = job.last_run_at
+      ? `<b>${esc(fmtTime(parseWhen(job.last_run_at)))} <span class="chip ${job.last_status === "ok" ? "ok" : "bad"}">${esc(job.last_status || "?")}</span></b>`
+      : "<b>—</b>";
+    const skills = (job.skills && job.skills.length) ? job.skills.join(", ") : "—";
+    el.innerHTML =
+      `<div class="card-top"><b>${esc(job.name || "(tanpa nama)")}</b>${STATE_CHIP(job)}` +
+      `<span class="spacer"></span><span class="chip mono">${esc(job.id)}</span></div>` +
+      `<div class="kv">` +
+        `<div>Jadwal<b>${esc(job.schedule_display || job.schedule || "—")}</b></div>` +
+        `<div>Jalan berikutnya<b>${job.next_run_at ? esc(fmtTime(parseWhen(job.next_run_at))) : "—"}</b></div>` +
+        `<div>Terakhir jalan${last}</div>` +
+        `<div>Skills<b>${esc(skills)}</b></div>` +
+      `</div>` +
+      (job.prompt ? `<div class="prompt">${esc(job.prompt)}</div>` : "") +
+      (job.last_error ? `<div class="err">${esc(job.last_error)}</div>` : "") +
+      `<div class="acts">` +
+        `<button class="btn sm" data-act="toggle">${job.state === "paused" ? "Lanjutkan" : "Jeda"}</button>` +
+        `<button class="btn sm" data-act="run">Jalankan sekarang</button>` +
+        `<button class="btn sm" data-act="output">Hasil terakhir</button>` +
+        `<button class="btn sm" data-act="edit">Ubah</button>` +
+        `<button class="btn sm danger" data-act="delete">Hapus</button>` +
+      `</div>` +
+      `<div class="out" data-out hidden></div>`;
+
+    el.querySelectorAll("[data-act]").forEach((btn) => {
+      btn.onclick = () => jobAction(job, btn.dataset.act, btn);
+    });
+    return el;
+  }
+
+  async function loadCron(quiet) {
+    const box = $("cronList");
+    if (!quiet) box.innerHTML = '<div class="empty">memuat job…</div>';
+    try {
+      const data = await api("/api/jobs?include_disabled=true");
+      jobs = data.jobs || [];
+      $("cCron").textContent = jobs.length ? String(jobs.length) : "";
+      box.innerHTML = "";
+      if (!jobs.length) {
+        box.innerHTML = '<div class="empty">Belum ada job terjadwal. Klik <b>+ Job baru</b> untuk membuat satu — ' +
+          'job uji dengan jadwal jauh di masa depan aman dibuat lalu dihapus lagi.</div>';
+        return;
+      }
+      for (const job of jobs) box.appendChild(jobCard(job));
+    } catch (e) {
+      $("cCron").textContent = "";
+      box.innerHTML = `<div class="err">Gagal memuat job cron.\n${esc(e.message)}</div>`;
+    }
+  }
+
+  async function jobAction(job, act, btn) {
+    const out = btn.closest(".card").querySelector("[data-out]");
+    if (act === "toggle") {
+      btn.disabled = true;
+      try {
+        await sendJSON(`/api/jobs/${job.id}/${job.state === "paused" ? "resume" : "pause"}`, "POST");
+        toast(job.state === "paused" ? "Job dilanjutkan" : "Job dijeda");
+      } catch (e) {
+        toast("Gagal: " + e.message);
+      }
+      btn.disabled = false;
+      return loadCron(true);
+    }
+    if (act === "run") {
+      btn.disabled = true;
+      btn.textContent = "menjalankan…";
+      try {
+        await sendJSON(`/api/jobs/${job.id}/run`, "POST", {});
+        toast("Job dijalankan — hasil muncul setelah run selesai");
+        // Gateway menulis status setelah run selesai (bisa ~1 menit): pantau sebentar.
+        let n = 0;
+        clearInterval(pollTimer);
+        pollTimer = setInterval(async () => {
+          n++;
+          await loadCron(true);
+          if (n >= 12) clearInterval(pollTimer);
+        }, 10000);
+      } catch (e) {
+        toast("Gagal menjalankan: " + e.message);
+      }
+      btn.disabled = false;
+      btn.textContent = "Jalankan sekarang";
+      return;
+    }
+    if (act === "output") {
+      out.hidden = false;
+      out.innerHTML = '<span class="meta">memuat hasil…</span>';
+      try {
+        const data = await api(`/api/jobs/${job.id}/output`);
+        out.innerHTML = `<span class="meta">${esc(data.file || "(belum ada berkas)")} · ${data.files || 0} berkas` +
+          `${data.truncated ? " · dipotong" : ""}</span>` + esc(data.text || data.note || "(kosong)");
+      } catch (e) {
+        out.innerHTML = `<span class="meta">gagal</span>${esc(e.message)}`;
+      }
+      return;
+    }
+    if (act === "edit") {
+      editing = job.id;
+      $("jobForm").hidden = false;
+      $("jobMode").textContent = "ubah " + job.id;
+      $("jobSubmit").textContent = "Simpan perubahan";
+      $("fName").value = job.name || "";
+      $("fSchedule").value = (job.schedule && (job.schedule.display || job.schedule.expression)) ||
+        job.schedule_display || "";
+      $("fPrompt").value = job.prompt || "";
+      $("fSkills").value = (job.skills || []).join(", ");
+      $("fDeliver").value = job.deliver || "local";
+      $("jobErr").hidden = true;
+      $("fName").focus();
+      $("jobForm").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
+    if (act === "delete") {
+      const ok = await ask("Hapus job terjadwal?",
+        `"${job.name}" (${job.id}) dihapus dari cron Hermes. Riwayat hasil run-nya tetap ada di disk.`, "Hapus job");
+      if (!ok) return;
+      try {
+        await sendJSON(`/api/jobs/${job.id}`, "DELETE");
+        toast("Job dihapus");
+      } catch (e) {
+        toast("Gagal menghapus: " + e.message);
+      }
+      return loadCron(true);
+    }
+  }
+
+  function resetJobForm() {
+    editing = "";
+    $("jobForm").reset();
+    $("fDeliver").value = "local";
+    $("jobMode").textContent = "job baru";
+    $("jobSubmit").textContent = "Simpan job";
+    $("jobErr").hidden = true;
+    $("jobForm").hidden = true;
+  }
+
+  $("newJob").onclick = () => {
+    resetJobForm();
+    $("jobForm").hidden = false;
+    $("jobForm").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    $("fName").focus();
+  };
+  $("jobCancel").onclick = resetJobForm;
+  document.querySelectorAll("[data-preset]").forEach((b) => {
+    b.onclick = () => { $("fSchedule").value = b.dataset.preset; };
+  });
+
+  $("jobForm").onsubmit = async (ev) => {
+    ev.preventDefault();
+    const name = $("fName").value.trim();
+    const schedule = $("fSchedule").value.trim();
+    const prompt = $("fPrompt").value;
+    const skills = $("fSkills").value.split(",").map((s) => s.trim()).filter(Boolean);
+    const deliver = $("fDeliver").value.trim() || "local";
+    const errBox = $("jobErr");
+    errBox.hidden = true;
+    if (!name || !schedule) {
+      errBox.hidden = false;
+      errBox.textContent = "Nama dan jadwal wajib diisi.";
+      return;
+    }
+    const body = { name, schedule, prompt, deliver };
+    if (skills.length) body.skills = skills;
+    const btn = $("jobSubmit");
+    btn.disabled = true;
+    try {
+      if (editing) {
+        const patch = { name, schedule, prompt, deliver };
+        if (skills.length) patch.skills = skills;
+        await sendJSON(`/api/jobs/${editing}`, "PATCH", patch);
+        toast("Job diperbarui");
+      } else {
+        await sendJSON("/api/jobs", "POST", body);
+        toast("Job dibuat");
+      }
+      resetJobForm();
+      loaded.cron = true;
+      await loadCron(true);
+      showTab("cron");
+    } catch (e) {
+      errBox.hidden = false;
+      errBox.textContent = "Gagal menyimpan: " + e.message;
+    }
+    btn.disabled = false;
+  };
+
+  // =====================================================================
+  // SKILLS
+  // =====================================================================
+  let skills = [];
+  async function loadSkills() {
+    const box = $("skillsList");
+    box.innerHTML = '<div class="empty">memuat skills…</div>';
+    try {
+      const data = await api("/v1/skills");
+      skills = data.data || [];
+      $("cSkills").textContent = skills.length ? String(skills.length) : "";
+      const fallback = data.source === "local-fallback";
+      $("skillsSrc").className = "chip " + (fallback ? "warn" : "ok");
+      $("skillsSrc").textContent = fallback ? "dari disk (cadangan)" : "dari gateway";
+      $("skillsNote").textContent = data.note || "Read-only: halaman ini tidak memasang atau menghapus skill.";
+      $("skillsNote").className = "note" + (fallback ? " warn" : "");
+      renderSkills();
+    } catch (e) {
+      box.innerHTML = `<div class="err">Gagal memuat skills.\n${esc(e.message)}</div>`;
+    }
+  }
+  function renderSkills() {
+    const box = $("skillsList");
+    const q = ($("skillSearch").value || "").trim().toLowerCase();
+    const hits = skills.filter((s) => !q ||
+      ((s.name || "") + " " + (s.description || "") + " " + (s.category || "")).toLowerCase().includes(q));
+    box.innerHTML = "";
+    if (!hits.length) {
+      box.innerHTML = `<div class="empty">${skills.length ? "tidak ada yang cocok" : "tidak ada skill terpasang"}</div>`;
+      return;
+    }
+    let cat = null;
+    for (const s of hits) {
+      const c = s.category || "lainnya";
+      if (c !== cat) {
+        cat = c;
+        const h = document.createElement("div");
+        h.className = "grouphead";
+        h.textContent = c;
+        box.appendChild(h);
+      }
+      const row = document.createElement("div");
+      row.className = "row";
+      row.innerHTML = `<div class="main"><div class="nm">${esc(s.name)}</div>` +
+        `<div class="ds">${esc(s.description || "(tanpa deskripsi)")}</div></div>`;
+      box.appendChild(row);
+    }
+    const tail = document.createElement("div");
+    tail.className = "note";
+    tail.style.marginTop = "12px";
+    tail.textContent = `${hits.length} dari ${skills.length} skill ditampilkan.`;
+    box.appendChild(tail);
+  }
+  $("skillSearch").oninput = renderSkills;
+
+  // =====================================================================
+  // TOOLSETS
+  // =====================================================================
+  async function loadToolsets() {
+    const box = $("toolsetsList");
+    box.innerHTML = '<div class="empty">memuat toolset…</div>';
+    try {
+      const data = await api("/v1/toolsets");
+      const items = data.data || [];
+      const on = items.filter((t) => t.enabled).length;
+      $("cToolsets").textContent = items.length ? `${on}/${items.length}` : "";
+      $("tsSummary").textContent = `${on} aktif · ${items.length} terdaftar`;
+      box.innerHTML = "";
+      for (const t of items) {
+        const row = document.createElement("div");
+        row.className = "row";
+        const tools = (t.tools || []).join(", ") || "—";
+        row.innerHTML = `<div class="main"><div class="nm">${esc(t.label || t.name)} ` +
+          `<span class="chip mono">${esc(t.name)}</span></div>` +
+          `<div class="ds">${esc(t.description || "")}</div>` +
+          `<div class="tools">${esc(tools)}</div></div>` +
+          `<span class="chip ${t.enabled ? "ok" : ""}">${t.enabled ? "aktif" : "nonaktif"}</span>` +
+          `<span class="chip ${t.configured ? "acc" : "warn"}">${t.configured ? "terkonfigurasi" : "butuh kunci"}</span>`;
+        box.appendChild(row);
+      }
+    } catch (e) {
+      box.innerHTML = `<div class="err">Gagal memuat toolset.\n${esc(e.message)}</div>`;
+    }
+  }
+
+  // =====================================================================
+  // STATUS
+  // =====================================================================
+  function statCard(label, value, sub, cls) {
+    return `<div class="stat"><div class="lbl">${esc(label)}</div>` +
+      `<div class="val">${value}</div>` + (sub ? `<div class="sub">${sub}</div>` : "") + `</div>`;
+  }
+  function checkChips(checks) {
+    return Object.entries(checks || {}).map(([k, v]) => {
+      const st = (v && v.status) || "?";
+      const kind = st === "ok" ? "ok" : st === "warn" ? "warn" : "bad";
+      let extra = "";
+      if (v && v.used_percent != null) extra = ` ${Math.round(v.used_percent)}%`;
+      if (v && v.state) extra = ` ${v.state}`;
+      return `<span class="chip ${kind}"><i class="dot ${kind === "ok" ? "" : kind}"></i>${esc(k)}${esc(extra)}</span>`;
+    }).join(" ");
+  }
+
+  async function loadStatus() {
+    const box = $("statusBody");
+    box.innerHTML = '<div class="empty">memuat status…</div>';
+    let st, opts = null, boards = null;
+    try {
+      st = await api("/api/status");
+    } catch (e) {
+      box.innerHTML = `<div class="err">Gagal memuat status.\n${esc(e.message)}</div>`;
+      return;
+    }
+    try { opts = await api("/api/model/options"); } catch { opts = null; }
+    try { boards = await api("/api/agents/boards"); } catch { boards = null; }
+
+    const gw = st.gateway || {};
+    const cap = st.capabilities || {};
+    const ready = gw.readiness || {};
+    const checks = ready.checks || {};
+    const apiPlatform = (gw.platforms || {}).api_server || {};
+    const metrics = apiPlatform.metrics || {};
+    $("statusAt").textContent = "diperbarui " + fmtTime(st.generated_at * 1000);
+
+    const activeModel = opts ? `${opts.provider || "default"} · ${opts.model || "?"}` : (cap.model || "—");
+    const boardCount = boards ? boards.length : (st.kanban || {}).boards;
+    let html = '<div class="cards">' +
+      statCard("Gateway", esc(gw.version || "—"),
+        `<span class="chip ${gw.gateway_state === "running" ? "ok" : "bad"}">${esc(gw.gateway_state || "?")}</span> pid ${esc(gw.pid || "—")}`) +
+      statCard("Model aktif", esc(activeModel), opts ? "profil default (bukan per sesi)" : "dari capabilities") +
+      statCard("Uptime gateway", fmtDur(st.uptime_seconds),
+        "webchat " + fmtDur((st.webchat || {}).uptime_seconds) + " · port " + esc((st.webchat || {}).port)) +
+      statCard("Kesiapan", `<span class="chip ${ready.status === "ok" ? "ok" : "warn"}">${esc(ready.status || "?")}</span>`,
+        "active runs " + esc((checks.background_queues || {}).active_api_runs ?? 0) +
+        " · agen " + esc(gw.active_agents ?? 0)) +
+      statCard("Kanban (kanban.db)", `${esc(boardCount ?? "—")} board`,
+        "db " + fmtBytes((st.kanban || {}).db_bytes) + (st.kanban && st.kanban.ok ? "" : " · tidak ditemukan")) +
+      statCard("state.db", fmtBytes((st.state_db || {}).bytes),
+        esc((st.state_db || {}).ok ? "terbaca" : "tidak ada")) +
+      statCard("Permintaan hari ini", esc(((metrics.metrics_today || {}).requests) ?? "—"),
+        "p95 " + esc(Math.round((metrics.metrics_today || {}).latency_p95_ms ?? 0)) + " ms") +
+      statCard("Capabilities", `${Object.keys(cap.features || {}).length} fitur`,
+        esc(cap.object || "—")) +
+      '</div>';
+
+    html += '<div class="grouphead">Pemeriksaan gateway</div><div class="checks">' + checkChips(checks) + "</div>";
+
+    if (cap.features) {
+      html += '<div class="grouphead">Fitur</div><table class="cap"><tbody>' +
+        Object.entries(cap.features).map(([k, v]) => {
+          const label = typeof v === "boolean" ? (v ? "aktif" : "nonaktif")
+            : (v && typeof v === "object" ? "objek" : esc(String(v)));
+          const cls = v === true ? "ok" : v === false ? "" : "acc";
+          return `<tr><td>${esc(k)}</td><td><span class="chip ${cls}">${esc(label)}</span></td></tr>`;
+        }).join("") + "</tbody></table>";
+    }
+    if (cap.endpoints) {
+      html += '<div class="grouphead">Endpoint yang diiklankan</div><table class="cap"><tbody>' +
+        Object.entries(cap.endpoints).map(([k, v]) =>
+          `<tr><td>${esc(k)}</td><td><span class="mono">${esc(v.method)} ${esc(v.path)}</span></td></tr>`).join("") +
+        "</tbody></table>";
+    }
+    const errs = st.errors || {};
+    if (Object.keys(errs).length) {
+      html += `<div class="err">Sebagian data tidak terbaca:\n` +
+        Object.entries(errs).map(([k, v]) => `${k}: ${v}`).join("\n") + "</div>";
+    }
+    box.innerHTML = html;
+  }
+
+  // =====================================================================
+  $("refresh").onclick = () => {
+    const active = TABS.find((t) => !$("panel-" + t).hidden) || "cron";
+    $("refresh").classList.add("busy");
+    const map = { cron: loadCron, skills: loadSkills, toolsets: loadToolsets, status: loadStatus };
+    Promise.resolve(map[active]()).finally(() => {
+      $("refresh").classList.remove("busy");
+      toast("Dimuat ulang");
+    });
+  };
+
+  // ---- init ----
+  const start = (location.hash || "").replace("#", "");
+  showTab(TABS.includes(start) ? start : "cron");
+  if (location.hash === "#status") showTab("status");
+})();
+</script>
+</body>
+</html>

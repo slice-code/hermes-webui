@@ -2898,7 +2898,34 @@ class Handler(BaseHTTPRequestHandler):
                 sha = resp.headers.get("X-Artifact-Sha256") or ""
                 artifact_id = resp.headers.get("X-Artifact-Id") or ""
         except urllib.error.HTTPError as exc:
-            return self._upstream_error(exc)
+            # Tautan ini dibuka sebagai navigasi browser, jadi balas teks biasa —
+            # JSON bertingkat akan tampil sebagai blob mentah di tab baru.
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", "replace")[:500]
+            except Exception:  # noqa: BLE001
+                detail = ""
+            if "artifact_not_found" in detail or "unknown artifact" in detail:
+                msg = ("Artifact tidak tersedia. Gateway menyimpan artifact sekali pakai "
+                       "dan hanya ±5 menit; minta agen mengunggah ulang.")
+            elif "browser_control_disabled" in detail:
+                msg = ("Artifact dimatikan di gateway (browser.extension_control.enabled "
+                       "= false). Nyalakan flag itu di config Hermes untuk memakai fitur ini.")
+            elif exc.code == 404:
+                msg = ("Artifact tidak dikenal, sudah dipakai, atau fitur artifact dimatikan "
+                       "di gateway (browser.extension_control.enabled = false).")
+            elif exc.code == 410:
+                msg = "Artifact sudah kedaluwarsa (410)."
+            else:
+                msg = "Gagal mengunduh artifact (HTTP %d)." % exc.code
+            body = (msg + "\n\n" + detail).encode("utf-8")
+            self.send_response(exc.code)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
         except Exception as exc:  # noqa: BLE001 - dilaporkan ke UI
             return self._upstream_error(exc)
         headers = [("Content-Disposition", disposition or "attachment"),

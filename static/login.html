@@ -84,7 +84,7 @@
     btn.disabled = true;
     show("");
     try {
-      const res = await fetch("/login", {
+      const res = await fetch("/login" + location.search, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
